@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PaperBane app icon">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7DFF48"/><stop offset="1" stop-color="#32E6CF"/></linearGradient><filter id="gl"><feGaussianBlur stdDeviation="10" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+  <path fill="#090B0A" d="m48 66 213-45 195 73 40 203-105 190-225-17L23 325z"/>
+  <path fill="#171a18" stroke="#985CFF" stroke-width="15" d="m74 104 166-58 171 57 59 163-94 164-204-8L54 307z"/>
+  <path fill="#c5c8c4" opacity=".14" d="m112 127 76-26-18 60 67 34-66 40 31 56-82 10 22 69-74-50z"/>
+  <g filter="url(#gl)"><path stroke="url(#g)" stroke-width="28" d="M303 78v73m0 220v69"/><path fill="url(#g)" stroke="#7DFF48" stroke-width="14" d="M238 144h130v235H238z"/><path fill="#090B0A" opacity=".2" d="M269 184h69v153h-69z"/></g>
+</svg>

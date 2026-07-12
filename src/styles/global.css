@@ -1,0 +1,117 @@
+:root {
+  color-scheme: dark;
+  font-family: 'Arial Narrow', 'Roboto Condensed', 'Franklin Gothic Medium', Arial, sans-serif;
+  color: #c5c8c4;
+  background: #090b0a;
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+  --black: #090b0a;
+  --surface: #111312;
+  --fog: #5e625e;
+  --green: #7dff48;
+  --dark-green: #2d6a35;
+  --purple: #985cff;
+  --cyan: #32e6cf;
+  --red: #c63f3f;
+  --ink: #c5c8c4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: var(--black);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: var(--black);
+}
+
+button,
+a,
+input {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 4px;
+}
+
+button {
+  color: inherit;
+}
+
+::selection {
+  color: var(--black);
+  background: var(--green);
+}
+
+.route-loader {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 22px;
+  color: var(--green);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(45, 106, 53, 0.22), transparent 34%),
+    var(--black);
+  font-family: 'Lucida Console', 'Courier New', monospace;
+  letter-spacing: 0.2em;
+  text-align: center;
+}
+
+.route-loader__mark {
+  position: relative;
+  width: 24px;
+  height: 68px;
+  margin: auto;
+  border: 2px solid var(--green);
+  background: rgba(125, 255, 72, 0.28);
+  box-shadow: 0 0 26px rgba(125, 255, 72, 0.42);
+  animation: signal-pulse 1.2s steps(4) infinite;
+}
+
+.route-loader__mark::before,
+.route-loader__mark::after {
+  position: absolute;
+  left: 50%;
+  width: 2px;
+  height: 18px;
+  content: '';
+  background: var(--green);
+  transform: translateX(-50%);
+}
+
+.route-loader__mark::before { bottom: 100%; }
+.route-loader__mark::after { top: 100%; }
+
+@keyframes signal-pulse {
+  50% { opacity: 0.55; transform: scaleY(0.92); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

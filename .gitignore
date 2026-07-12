@@ -1,0 +1,9 @@
+node_modules
+dist
+.vercel
+.npm-cache
+.edge-test-*
+smoke-artifacts
+*-smoke.png
+*.local
+npm-debug.log*
