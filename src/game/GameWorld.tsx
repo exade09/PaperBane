@@ -9,6 +9,7 @@ import { GAME_CONFIG } from './GameConfig'
 import { useGameStore } from './GameState'
 import { Player } from './Player'
 import { ThirdPersonCamera } from './ThirdPersonCamera'
+import TutorialPrompts from './TutorialPrompts'
 import { progressionColliders, type WorldBox } from './WorldCollision'
 import { useReducedMotion } from './useReducedMotion'
 
@@ -787,12 +788,12 @@ function WorldSession() {
 
   return (
     <>
-      <ambientLight intensity={arenaDanger ? 0.3 : bossInArena ? 0.34 : 0.43} color={arenaAmbient} />
-      <hemisphereLight args={[arenaSky, '#0b0e0c', arenaDanger ? 0.5 : bossInArena ? 0.56 : 0.64]} />
+      <ambientLight intensity={arenaDanger ? 0.31 : bossInArena ? 0.36 : 0.5} color={arenaAmbient} />
+      <hemisphereLight args={[arenaSky, '#0b0e0c', arenaDanger ? 0.52 : bossInArena ? 0.58 : 0.72]} />
       <directionalLight
         position={[-9, 16, 8]}
         color={keyLight}
-        intensity={arenaDanger ? 0.92 : bossInArena ? 0.84 : 0.82}
+        intensity={arenaDanger ? 0.94 : bossInArena ? 0.87 : 0.98}
         castShadow={graphicsMode === 'QUALITY'}
         shadow-mapSize-width={graphicsMode === 'QUALITY' ? 1024 : 512}
         shadow-mapSize-height={graphicsMode === 'QUALITY' ? 1024 : 512}
@@ -802,7 +803,7 @@ function WorldSession() {
         shadow-camera-bottom={-25}
         shadow-camera-far={48}
       />
-      <directionalLight position={[11, 8, -16]} color="#687395" intensity={bossInArena ? 0.3 : 0.22} />
+      <directionalLight position={[11, 8, -16]} color="#7184a1" intensity={bossInArena ? 0.31 : 0.29} />
       <CityEnvironment quality={graphicsMode === 'QUALITY'} reducedMotion={reducedMotion} />
       <FogBanks quality={graphicsMode === 'QUALITY'} reducedMotion={reducedMotion} />
       <BrokenCar position={[-5.2, 0, 7.8]} rotation={0.08} />
@@ -823,16 +824,12 @@ function WorldSession() {
       </group>
       <Fence position={[-7.1, 0, -13.7]} length={6.5} rotation={0.08} />
       <Fence position={[7.4, 0, 14]} length={5.4} rotation={-0.05} />
-      <FlickerLamp position={[-6.8, 0, 18]} seed={1} broken reducedMotion={reducedMotion} />
+      <FlickerLamp position={[-6.8, 0, 15.5]} color="#d8aa67" seed={1} broken reducedMotion={reducedMotion} />
       <FlickerLamp position={[6.6, 0, -12]} seed={2} reducedMotion={reducedMotion} />
       <FlickerLamp position={[-10.5, 0, -39]} seed={3} broken reducedMotion={reducedMotion} />
       <FlickerLamp position={[5.6, 0, -76]} color="#985cff" seed={4} reducedMotion={reducedMotion} />
       <WorldLabel text="PAPER HANDS" position={[-8.48, 3.2, 1]} rotation={[0, Math.PI / 2, -0.08]} color="#c5c8c4" width={4.2} />
-      <WorldLabel text="WASD MOVE" position={[7.95, 2.1, 18]} rotation={[0, -Math.PI / 2, 0]} width={2.8} height={0.7} fontSize={48} />
-      <WorldLabel text="MOUSE LOOK" position={[-7.95, 2.1, 13]} rotation={[0, Math.PI / 2, 0]} width={2.8} height={0.7} fontSize={48} />
-      <WorldLabel text="LEFT CLICK LIGHT ATTACK" position={[7.95, 2.1, 6]} rotation={[0, -Math.PI / 2, 0]} width={4.2} height={0.7} fontSize={43} />
-      <WorldLabel text="RIGHT CLICK HEAVY ATTACK" position={[-7.95, 2.1, -1]} rotation={[0, Math.PI / 2, 0]} width={4.4} height={0.7} fontSize={42} />
-      <WorldLabel text="SPACE DODGE  Q MEDKIT" position={[7.95, 2.1, -9]} rotation={[0, -Math.PI / 2, 0]} width={4.2} height={0.7} fontSize={42} />
+      <TutorialPrompts playerPosition={playerPosition} reducedMotion={reducedMotion} />
       <SignalTerminal reducedMotion={reducedMotion} />
       <SlidingGate
         z={GAME_CONFIG.world.pumpEntranceZ}
@@ -895,10 +892,10 @@ export default function GameWorld() {
   const showWorld = status !== 'LOADING' && status !== 'MAIN_MENU'
   return (
     <>
-      <color attach="background" args={[victory ? '#1d2b22' : '#0d1211']} />
+      <color attach="background" args={[victory ? '#1d2b22' : '#111715']} />
       <fog
         attach="fog"
-        args={[victory ? '#67736a' : dead ? '#59605c' : '#343c39', dead ? 5 : 8, victory ? 78 : dead ? 36 : 64]}
+        args={[victory ? '#67736a' : dead ? '#59605c' : '#343c39', dead ? 5 : 10.5, victory ? 78 : dead ? 36 : 72]}
       />
       <CombatSystem>
         {showWorld && <WorldSession key={sessionId} />}

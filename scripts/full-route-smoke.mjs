@@ -123,14 +123,80 @@ const readActors = () => evaluate(`(() => {
     group.traverse((child) => { if (child.isMesh) count += 1 })
     return count
   }
-  const enemies = groups.filter((group) => group.children.length === 1 && meshCount(group) === 73)
+  const enemies = groups.filter((group) => {
+    const count = meshCount(group)
+    return group.children.length === 1 && count >= 60 && count <= 140 && group.position.z > -80
+  })
   const player = groups.find((group) => group.children.some((child) => child.type === 'PointLight') && (() => {
     const count = meshCount(group)
-    return count > 80 && count < 150
+    return count > 80 && count < 240
+  })())
+  const boss = groups.find((group) => group.children.some((child) => child.type === 'PointLight') && (() => {
+    const count = meshCount(group)
+    return count >= 10 && count < 80 && group.position.z < -80
   })())
   return {
     player: player?.position.toArray() ?? null,
-    enemies: enemies.map((enemy) => enemy.position.toArray())
+    enemies: enemies.map((enemy) => enemy.position.toArray()),
+    boss: boss?.position.toArray() ?? null
+  }
+})()`)
+
+const modelMetrics = await evaluate(`(() => {
+  const canvas = document.querySelector('canvas')
+  const scene = globalThis.__paperbaneRouteRoots.get(canvas)?.store.getState().scene
+  if (!scene) return null
+  const groups = scene.children.filter((child) => child.type === 'Group')
+  const meshesFor = (group) => {
+    const meshes = []
+    group.traverse((child) => { if (child.isMesh && child.geometry) meshes.push(child) })
+    return meshes
+  }
+  const metrics = (group) => {
+    const meshes = meshesFor(group)
+    const uniqueGeometries = new Map()
+    const materials = new Set()
+    let renderedTriangles = 0
+    for (const mesh of meshes) {
+      const geometry = mesh.geometry
+      const triangles = geometry.index ? geometry.index.count / 3 : geometry.attributes.position.count / 3
+      renderedTriangles += triangles
+      uniqueGeometries.set(geometry.uuid, triangles)
+      const meshMaterials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+      meshMaterials.forEach((material) => material && materials.add(material.uuid))
+    }
+    return {
+      meshInstances: meshes.length,
+      renderedTriangles: Math.round(renderedTriangles),
+      uniqueGeometryTriangles: Math.round([...uniqueGeometries.values()].reduce((sum, value) => sum + value, 0)),
+      uniqueGeometries: uniqueGeometries.size,
+      uniqueMaterials: materials.size
+    }
+  }
+  const player = groups.find((group) => group.children.some((child) => child.type === 'PointLight') && (() => {
+    const count = meshesFor(group).length
+    return count > 80 && count < 240
+  })())
+  const enemies = groups.filter((group) => group.children.length === 1 && (() => {
+    const count = meshesFor(group).length
+    return count >= 60 && count <= 140 && group.position.z > -80
+  })())
+  const weaponCandidates = []
+  player?.traverse((object) => {
+    if (object.type !== 'Group') return
+    const meshes = meshesFor(object)
+    const hasCandleBody = meshes.some((mesh) => {
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+      return materials.some((material) => material?.color?.getHexString?.() === '4aa927')
+    })
+    if (hasCandleBody) weaponCandidates.push({ object, meshCount: meshes.length })
+  })
+  weaponCandidates.sort((a, b) => a.meshCount - b.meshCount)
+  return {
+    player: player ? metrics(player) : null,
+    weapon: weaponCandidates[0] ? metrics(weaponCandidates[0].object) : null,
+    enemy: enemies[0] ? metrics(enemies[0]) : null,
+    enemyInstances: enemies.length
   }
 })()`)
 
@@ -177,6 +243,19 @@ const approachEnemy = async (index, stopDistance = 4.6) => {
   throw new Error(`Enemy ${index} could not be approached: ${JSON.stringify(await readActors())}`)
 }
 
+const moveToPoint = async (targetX, targetZ, stopDistance = 1.2, timeout = 18000) => {
+  const started = Date.now()
+  while (Date.now() - started < timeout) {
+    const actors = await readActors()
+    assert(actors?.player, `Player transform is unavailable en route to ${targetX},${targetZ}`)
+    const distance = Math.hypot(targetX - actors.player[0], targetZ - actors.player[2])
+    if (distance <= stopDistance) return
+    await turnToPoint(targetX, targetZ)
+    await move(Math.min(300, Math.max(100, distance * 65)), 'KeyW', false)
+  }
+  throw new Error(`Waypoint ${targetX},${targetZ} was not reached: ${JSON.stringify(await readActors())}`)
+}
+
 const readState = () => evaluate(`(() => {
   const state = globalThis.__paperbaneRouteStore.getState()
   return {
@@ -186,7 +265,8 @@ const readState = () => evaluate(`(() => {
     killCount: state.killCount,
     bossHp: state.bossHp,
     hp: state.hp,
-    prompt: state.interactionPrompt
+    prompt: state.interactionPrompt,
+    checkpoint: state.checkpoint
   }
 })()`)
 
@@ -206,8 +286,33 @@ const attackUntil = async (predicate, timeout, label, targetIndex = null) => {
   return state
 }
 
+const attackBossUntilDefeated = async (timeout) => {
+  const started = Date.now()
+  let state = await readState()
+  let strike = 0
+  while (state.bossHp > 0 && Date.now() - started < timeout) {
+    const actors = await readActors()
+    assert(actors?.player && actors?.boss, `Boss transform is unavailable: ${JSON.stringify(actors)}`)
+    const distance = Math.hypot(
+      actors.boss[0] - actors.player[0],
+      actors.boss[2] - actors.player[2]
+    )
+    await turnToPoint(actors.boss[0], actors.boss[2])
+    if (distance > 2.65) await move(Math.min(260, Math.max(90, (distance - 2.35) * 90)), 'KeyW', false)
+    else await click(strike % 7 === 6 ? 'right' : 'left')
+    if (strike % 11 === 8) await tapKey('Space', ' ')
+    await delay(230)
+    state = await readState()
+    strike += 1
+  }
+  assert(state.bossHp === 0, `Paper King combat timed out: ${JSON.stringify(state)}`)
+}
+
 await move(1350)
-await approachEnemy(0)
+await approachEnemy(0, 3.5)
+const enemyScreenshot = await command('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+await mkdir('smoke-artifacts', { recursive: true })
+await writeFile('smoke-artifacts/enemy-closeup.png', Buffer.from(enemyScreenshot.data, 'base64'))
 await attackUntil((state) => state.killCount >= 1, 14000, 'First Paper Walker', 0)
 await approachEnemy(1)
 await attackUntil((state) => state.killCount >= 2 && state.progression === 'INTRO_COMPLETE', 20000, 'Intro combat', 1)
@@ -251,14 +356,11 @@ await tapKey('KeyE', 'e')
 await delay(650)
 state = await readState()
 assert(state.progression === 'TERMINAL_COMPLETE', `Terminal did not restore: ${JSON.stringify(state)}`)
+assert(state.checkpoint === true, `Terminal did not persist the boss checkpoint: ${JSON.stringify(state)}`)
+assert(await evaluate(`localStorage.getItem('paperbane-checkpoint') === 'true'`), 'Boss checkpoint was not written to local storage')
 
-await turnToYaw(0)
-await move(620, 'KeyD', false)
-for (let attempt = 0; attempt < 34; attempt += 1) {
-  state = await readState()
-  if (state.status === 'BOSS_INTRO' || state.progression === 'BOSS_ACTIVE') break
-  await move(420)
-}
+await moveToPoint(3.1, -72.5, 1.35)
+await moveToPoint(0, -91.5, 1.8, 24000)
 state = await readState()
 assert(state.progression === 'BOSS_ACTIVE', `Boss trigger was not reached: ${JSON.stringify(state)}`)
 
@@ -267,8 +369,13 @@ state = await readState()
 assert(state.status === 'PLAYING', `Boss intro did not return control: ${JSON.stringify(state)}`)
 await turnToYaw(0)
 await move(1100)
-await turnToPoint(0, -105)
-await attackUntil((current) => current.status === 'VICTORY' && current.progression === 'VICTORY', 45000, 'Paper King combat')
+await attackBossUntilDefeated(90000)
+for (let attempt = 0; attempt < 24 && (await readState()).status !== 'VICTORY'; attempt += 1) await delay(250)
+state = await readState()
+assert(
+  state.status === 'VICTORY' && state.progression === 'VICTORY',
+  `Paper King death did not complete the game: ${JSON.stringify(state)}`
+)
 
 const result = await evaluate(`(() => {
   globalThis.__paperbaneRouteUnsubscribe?.()
@@ -285,7 +392,16 @@ const result = await evaluate(`(() => {
     },
     transitions: globalThis.__paperbaneRouteTransitions,
     pageText: document.body.innerText,
-    pointerLocked: document.pointerLockElement === document.querySelector('canvas')
+    pointerLocked: document.pointerLockElement === document.querySelector('canvas'),
+    layout: {
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      documentWidth: document.documentElement.scrollWidth,
+      documentHeight: document.documentElement.scrollHeight,
+      bodyWidth: document.body.scrollWidth,
+      bodyHeight: document.body.scrollHeight,
+      bodyClass: document.body.className
+    }
   }
 })()`)
 
@@ -296,6 +412,8 @@ await writeFile('smoke-artifacts/full-route-victory.png', Buffer.from(screenshot
 
 assert(result.pageText.includes('THE SIGNAL IS') && result.pageText.includes('RESTORED'), 'Victory screen did not appear')
 assert(result.state.bossHp === 0, 'Boss health did not reach zero')
+assert(result.layout.documentWidth <= result.layout.innerWidth + 1, `Victory layout overflowed horizontally: ${JSON.stringify(result.layout)}`)
+assert(result.layout.documentHeight <= result.layout.innerHeight + 1, `Victory layout overflowed vertically: ${JSON.stringify(result.layout)}`)
 assert(browserErrors.length === 0, `Browser errors: ${browserErrors.join(' | ')}`)
 socket.close()
-console.log(JSON.stringify({ ...result, browserErrors }, null, 2))
+console.log(JSON.stringify({ ...result, modelMetrics, browserErrors }, null, 2))

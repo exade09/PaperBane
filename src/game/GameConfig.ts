@@ -11,8 +11,11 @@ export const GAME_CONFIG = {
     staminaRegen: 30,
     staminaRegenDelay: 1,
     dodgeCost: 30,
-    dodgeDuration: 0.3,
-    dodgeCooldown: 0.62,
+    dodgeDuration: 0.75,
+    dodgeDistance: 4.1,
+    dodgeInvulnerabilityStart: 0.18,
+    dodgeInvulnerabilityEnd: 0.48,
+    dodgeCooldown: 0.92,
     damageInvulnerability: 0.72,
     healAmount: 40
   },

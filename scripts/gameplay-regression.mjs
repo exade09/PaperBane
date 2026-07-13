@@ -62,6 +62,10 @@ const cameraChecks = await evaluate(`(async () => {
   const { useGameStore } = await import(gameStateUrl)
   const { applyCameraPointerDelta } = await import('/src/game/ThirdPersonCamera.tsx')
   const { cameraYawToFacingYaw } = await import('/src/game/Player.tsx')
+  const {
+    PLAYER_ANIMATION_TIMING,
+    getPlayerAnimationWindowSeconds
+  } = await import('/src/game/PlayerAnimationConfig.ts')
   const right = applyCameraPointerDelta(0, 0.18, 100, 0)
   const left = applyCameraPointerDelta(0, 0.18, -100, 0)
   const up = applyCameraPointerDelta(0, 0.18, 0, -100)
@@ -94,7 +98,17 @@ const cameraChecks = await evaluate(`(async () => {
     upPitch: up.pitch,
     downPitch: down.pitch,
     movementAttackAlignment:
-      movementForward.x * attackForward.x + movementForward.z * attackForward.z
+      movementForward.x * attackForward.x + movementForward.z * attackForward.z,
+    animationChecks: {
+      overheadDuration: PLAYER_ANIMATION_TIMING.OVERHEAD_STRIKE.duration,
+      overheadPhaseCount: PLAYER_ANIMATION_TIMING.OVERHEAD_STRIKE.phases.length,
+      overheadDamage: getPlayerAnimationWindowSeconds('OVERHEAD_STRIKE', 'damage'),
+      dodgeDuration: PLAYER_ANIMATION_TIMING.DODGE_ROLL.duration,
+      dodgePhaseCount: PLAYER_ANIMATION_TIMING.DODGE_ROLL.phases.length,
+      dodgeInvulnerability: getPlayerAnimationWindowSeconds('DODGE_ROLL', 'invulnerability'),
+      medkitDuration: PLAYER_ANIMATION_TIMING.MEDKIT_USE.duration,
+      surgeDuration: PLAYER_ANIMATION_TIMING.WICK_SURGE.duration
+    }
   }
 })()`)
 
@@ -103,6 +117,40 @@ assert(cameraChecks.leftYaw < 0, 'Left pointer movement did not decrease camera 
 assert(cameraChecks.upPitch < 0.18, 'Up pointer movement did not rotate the view upward')
 assert(cameraChecks.downPitch > 0.18, 'Down pointer movement did not rotate the view downward')
 assert(cameraChecks.movementAttackAlignment > 0.999, 'Player attacks are not aligned with camera-relative forward movement')
+assert(cameraChecks.animationChecks.overheadDuration === 1, 'Overhead strike duration drifted from 1.0 seconds')
+assert(cameraChecks.animationChecks.overheadPhaseCount === 5, 'Overhead strike is missing one of its five reference poses')
+assert(cameraChecks.animationChecks.overheadDamage[0] === 0.54 && cameraChecks.animationChecks.overheadDamage[1] === 0.68, 'Overhead damage window is not synchronized')
+assert(cameraChecks.animationChecks.dodgeDuration === 0.75, 'Dodge roll duration drifted from 0.75 seconds')
+assert(cameraChecks.animationChecks.dodgePhaseCount === 5, 'Dodge roll is missing one of its five reference poses')
+assert(Math.abs(cameraChecks.animationChecks.dodgeInvulnerability[0] - 0.18) < 0.0001, 'Dodge invulnerability does not start at 0.18 seconds')
+assert(Math.abs(cameraChecks.animationChecks.dodgeInvulnerability[1] - 0.48) < 0.0001, 'Dodge invulnerability does not end at 0.48 seconds')
+assert(cameraChecks.animationChecks.medkitDuration === 1.2, 'Medkit animation timing is missing')
+assert(cameraChecks.animationChecks.surgeDuration === 0.9, 'Wick Surge animation timing is missing')
+
+await evaluate(`globalThis.__paperbaneStore.setState({ hp: 50, medkits: 1, wick: 100, surgeTime: 0 })`)
+const medkitBeforeCommit = await evaluate(`(() => {
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyQ', key: 'q' }))
+  const state = globalThis.__paperbaneStore.getState()
+  const snapshot = { hp: state.hp, medkits: state.medkits }
+  window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyQ', key: 'q' }))
+  return snapshot
+})()`)
+assert(medkitBeforeCommit.hp === 50 && medkitBeforeCommit.medkits === 1, 'Medkit effect fired before the animation commit point')
+await delay(900)
+const medkitAfterCommit = await evaluate(`(() => { const state = globalThis.__paperbaneStore.getState(); return { hp: state.hp, medkits: state.medkits } })()`)
+assert(medkitAfterCommit.hp === 90 && medkitAfterCommit.medkits === 0, 'Medkit effect did not fire from MEDKIT_USE')
+await delay(360)
+const surgeBeforeCommit = await evaluate(`(() => {
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyF', key: 'f' }))
+  const surgeTime = globalThis.__paperbaneStore.getState().surgeTime
+  window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyF', key: 'f' }))
+  return surgeTime
+})()`)
+assert(surgeBeforeCommit === 0, 'Wick Surge activated before the animation commit point')
+await delay(650)
+const surgeAfterCommit = await evaluate(`globalThis.__paperbaneStore.getState().surgeTime`)
+assert(surgeAfterCommit > 0, 'Wick Surge did not activate from WICK_SURGE')
+await evaluate(`globalThis.__paperbaneStore.setState({ hp: 100000, surgeTime: 0 })`)
 
 for (const code of ['KeyW', 'ShiftLeft']) {
   await command('Input.dispatchKeyEvent', { type: 'keyDown', code, key: code === 'KeyW' ? 'w' : 'Shift' })
@@ -193,6 +241,7 @@ console.log(JSON.stringify({
   progression: result.state.progression,
   hp: result.state.hp,
   cameraChecks,
+  utilityChecks: { medkitBeforeCommit, medkitAfterCommit, surgeBeforeCommit, surgeAfterCommit },
   stateMachineChecks,
   transitions: result.transitions,
   hudShowsStreetObjective: result.pageText.includes('REACH THE PUMP STATION'),

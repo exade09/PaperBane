@@ -3,6 +3,11 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { useReducedMotion } from './useReducedMotion'
+import {
+  getPlayerAnimationProgress,
+  isNormalizedWindowActive,
+  PLAYER_ANIMATION_TIMING
+} from './PlayerAnimationConfig'
 
 interface WeaponProps {
   trail?: boolean
@@ -15,6 +20,7 @@ interface WeaponProps {
 const BODY_GEOMETRY = new RoundedBoxGeometry(0.34, 1.28, 0.3, 2, 0.045)
 const BODY_INSET_GEOMETRY = new RoundedBoxGeometry(0.2, 1.08, 0.025, 1, 0.012)
 const GRIP_GEOMETRY = new THREE.CylinderGeometry(0.09, 0.105, 0.46, 7)
+const GRIP_STOP_GEOMETRY = new THREE.CylinderGeometry(0.135, 0.11, 0.085, 8)
 const POMMEL_GEOMETRY = new THREE.CylinderGeometry(0.135, 0.115, 0.12, 7)
 const WICK_GEOMETRY = new THREE.CylinderGeometry(0.027, 0.027, 0.42, 6)
 const LOWER_WICK_GEOMETRY = new THREE.CylinderGeometry(0.027, 0.027, 0.18, 6)
@@ -55,9 +61,9 @@ export const Weapon = forwardRef<THREE.Group, WeaponProps>(function Weapon(
       flatShading: true
     }),
     rearFace: new THREE.MeshStandardMaterial({
-      color: '#3f862b',
-      emissive: '#275d1d',
-      emissiveIntensity: 0.28,
+      color: '#4c9d30',
+      emissive: '#2f791f',
+      emissiveIntensity: 0.58,
       roughness: 0.4,
       metalness: 0.12,
       flatShading: true
@@ -98,11 +104,11 @@ export const Weapon = forwardRef<THREE.Group, WeaponProps>(function Weapon(
     if (bodyMaterial.current) bodyMaterial.current.emissiveIntensity = (surge ? 1.85 : 0.78) * pulse
     if (coreMaterial.current) coreMaterial.current.emissiveIntensity = (surge ? 2.8 : 1.35) * pulse
 
-    const duration = (heavy ? 0.86 : 0.5) / (surge ? 1.18 : 1)
-    const current = actionTime?.current ?? duration * 0.5
-    const activeStart = duration * (heavy ? 0.42 : 0.31)
-    const activeEnd = duration * (heavy ? 0.72 : 0.62)
-    const active = trail && current >= activeStart && current <= activeEnd
+    const timeline = heavy ? 'OVERHEAD_STRIKE' : 'LIGHT_ATTACK'
+    const speed = surge ? 1.18 : 1
+    const fallbackElapsed = PLAYER_ANIMATION_TIMING[timeline].duration * 0.5 / speed
+    const progress = getPlayerAnimationProgress(timeline, actionTime?.current ?? fallbackElapsed, speed)
+    const active = trail && isNormalizedWindowActive(progress, PLAYER_ANIMATION_TIMING[timeline].events.trail)
     const target = active ? (heavy ? 0.44 : 0.3) : 0
     const targetCross = active ? (heavy ? 0.22 : 0.12) : 0
     const response = 1 - Math.exp(-(active ? 30 : 18) * delta)
@@ -117,6 +123,7 @@ export const Weapon = forwardRef<THREE.Group, WeaponProps>(function Weapon(
   return (
     <group ref={localRef} dispose={null}>
       <mesh geometry={GRIP_GEOMETRY} position={[0, -0.12, 0]} castShadow material={staticMaterials.grip} />
+      <mesh geometry={GRIP_STOP_GEOMETRY} position={[0, 0.12, 0]} castShadow material={staticMaterials.edge} />
       {[-0.25, -0.13, -0.01].map((y, index) => (
         <mesh
           key={y}

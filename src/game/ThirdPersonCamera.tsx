@@ -18,6 +18,9 @@ const CAMERA_YAW_SENSITIVITY = 0.00245
 const CAMERA_PITCH_SENSITIVITY = 0.00195
 const CAMERA_MIN_PITCH = -0.2
 const CAMERA_MAX_PITCH = 0.62
+const CAMERA_FOLLOW_HEIGHT = 1.45
+const CAMERA_BASE_DISTANCE = 5.9
+const CAMERA_COMBAT_PUSH = 0.7
 
 export const applyCameraPointerDelta = (
   currentYaw: number,
@@ -39,7 +42,7 @@ export function ThirdPersonCamera({ target, yaw, pitch, combatZoom, extraCollide
   const combat = useCombatSystem()
   const reducedMotion = useReducedMotion()
   const hadPointerLock = useRef(false)
-  const smoothedLook = useRef(new THREE.Vector3(0, 1.4, 20))
+  const smoothedLook = useRef(new THREE.Vector3(0, CAMERA_FOLLOW_HEIGHT, 20))
   const ray = useMemo(() => new THREE.Ray(), [])
   const collisionPoint = useMemo(() => new THREE.Vector3(), [])
   const boxes = useMemo(() => cameraObstacleBoxes(extraColliders), [extraColliders])
@@ -103,7 +106,7 @@ export function ThirdPersonCamera({ target, yaw, pitch, combatZoom, extraCollide
     if (!player) return
     const status = useGameStore.getState().status
     if (status === 'PAUSED') return
-    const follow = player.position.clone().add(new THREE.Vector3(0, 1.35, 0))
+    const follow = player.position.clone().add(new THREE.Vector3(0, CAMERA_FOLLOW_HEIGHT, 0))
 
     if (status === 'BOSS_INTRO') {
       const introPosition = new THREE.Vector3(6.5, 4.5, -98)
@@ -113,11 +116,11 @@ export function ThirdPersonCamera({ target, yaw, pitch, combatZoom, extraCollide
       return
     }
 
-    const distance = 5.25 - combatZoom.current * 0.65
+    const distance = CAMERA_BASE_DISTANCE - combatZoom.current * CAMERA_COMBAT_PUSH
     const cosPitch = Math.cos(pitch.current)
     const offset = new THREE.Vector3(
       -Math.sin(yaw.current) * cosPitch * distance,
-      1.25 + Math.sin(pitch.current) * distance,
+      1.4 + Math.sin(pitch.current) * distance,
       Math.cos(yaw.current) * cosPitch * distance
     )
     const desired = follow.clone().add(offset)
@@ -143,7 +146,7 @@ export function ThirdPersonCamera({ target, yaw, pitch, combatZoom, extraCollide
     }
     camera.position.lerp(desired, 1 - Math.exp(-11 * delta))
     const lookAhead = new THREE.Vector3(Math.sin(yaw.current), 0, -Math.cos(yaw.current)).multiplyScalar(1.1)
-    const desiredLook = follow.clone().add(lookAhead).add(new THREE.Vector3(0, 0.14, 0))
+    const desiredLook = follow.clone().add(lookAhead).add(new THREE.Vector3(0, 0.16, 0))
     smoothedLook.current.lerp(desiredLook, 1 - Math.exp(-15 * delta))
     camera.lookAt(smoothedLook.current)
 

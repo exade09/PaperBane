@@ -139,6 +139,72 @@ assert(community.links.includes('https://t.me/'), 'Telegram link is incorrect')
 assert(community.links.includes('https://x.com/'), 'X link is incorrect')
 await screenshot('homepage')
 
+await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape' })
+await command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape' })
+await delay(180)
+
+const responsiveLayouts = []
+for (const viewport of [
+  { width: 320, height: 640 },
+  { width: 375, height: 667 },
+  { width: 768, height: 800 },
+  { width: 1024, height: 768 },
+  { width: 1440, height: 1000 },
+  { width: 1920, height: 1080 }
+]) {
+  await command('Emulation.setDeviceMetricsOverride', {
+    width: viewport.width,
+    height: viewport.height,
+    deviceScaleFactor: 1,
+    mobile: viewport.width <= 375
+  })
+  await delay(180)
+  await evaluate(`window.scrollTo(0, 0)`)
+  await evaluate(`Array.from(document.querySelectorAll('button')).find((button) => button.textContent.trim() === 'TOKENOMICS').click()`)
+  await delay(220)
+  const layout = await evaluate(`(() => {
+    const dialog = document.querySelector('[role="dialog"]')
+    const content = dialog?.querySelector('.pb-modal__content')
+    const cards = Array.from(dialog?.querySelectorAll('.pb-token-grid--modal > div') ?? [])
+    const rects = cards.map((card) => {
+      const label = card.querySelector('dt')?.getBoundingClientRect()
+      const value = card.querySelector('dd')?.getBoundingClientRect()
+      const cardRect = card.getBoundingClientRect()
+      return {
+        card: { left: cardRect.left, top: cardRect.top, right: cardRect.right, bottom: cardRect.bottom },
+        label: label && { left: label.left, top: label.top, right: label.right, bottom: label.bottom },
+        value: value && { left: value.left, top: value.top, right: value.right, bottom: value.bottom }
+      }
+    })
+    const intersects = (a, b) => Boolean(a && b && Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1)
+    const cardOverlap = rects.some((entry, index) => rects.slice(index + 1).some((other) => intersects(entry.card, other.card)))
+    const textOverlap = rects.some((entry) => intersects(entry.label, entry.value))
+    const dialogRect = dialog?.getBoundingClientRect()
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      documentWidth: document.documentElement.scrollWidth,
+      dialogRect: dialogRect && { left: dialogRect.left, top: dialogRect.top, right: dialogRect.right, bottom: dialogRect.bottom },
+      contentScrollable: Boolean(content && (content.scrollHeight <= content.clientHeight + 1 || getComputedStyle(content).overflowY === 'auto')),
+      cardCount: cards.length,
+      cardOverlap,
+      textOverlap,
+      clippedButtons: Array.from(dialog?.querySelectorAll('.pb-button') ?? []).some((button) => button.scrollWidth > button.clientWidth + 1)
+    }
+  })()`)
+  assert(layout.documentWidth <= layout.viewport.width + 1, `Homepage overflow at ${viewport.width}px: ${JSON.stringify(layout)}`)
+  assert(layout.dialogRect && layout.dialogRect.left >= -1 && layout.dialogRect.right <= layout.viewport.width + 1, `Tokenomics modal escaped ${viewport.width}px viewport: ${JSON.stringify(layout)}`)
+  assert(layout.cardCount === 6, `Tokenomics rows are incomplete at ${viewport.width}px`)
+  assert(!layout.cardOverlap && !layout.textOverlap, `Tokenomics content overlaps at ${viewport.width}px: ${JSON.stringify(layout)}`)
+  assert(!layout.clippedButtons, `Tokenomics button text clips at ${viewport.width}px`)
+  assert(layout.contentScrollable, `Tokenomics modal cannot scroll at ${viewport.width}px`)
+  responsiveLayouts.push(layout)
+  await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape' })
+  await command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape' })
+  await delay(120)
+}
+
+await command('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false })
+
 await command('Page.navigate', { url: `${baseUrl}/play` })
 await command('Page.bringToFront')
 await delay(12000)
@@ -155,20 +221,47 @@ const playText = await evaluate(`document.body.innerText`)
 assert(playText.includes('THE HOLDER'), 'Player HUD did not start')
 assert(playText.includes('REACH THE PUMP STATION'), 'Initial objective is incorrect')
 const frameState = await evaluate(`new Promise((resolve) => requestAnimationFrame((time) => resolve({ time, visibility: document.visibilityState, focused: document.hasFocus() })))`)
+const frameTiming = await evaluate(`new Promise((resolve) => {
+  const samples = []
+  let previous = performance.now()
+  const sample = (now) => {
+    if (samples.length > 0 || now > previous) samples.push(now - previous)
+    previous = now
+    if (samples.length < 120) requestAnimationFrame(sample)
+    else {
+      const sorted = [...samples].sort((a, b) => a - b)
+      const averageMs = samples.reduce((sum, value) => sum + value, 0) / samples.length
+      resolve({
+        samples: samples.length,
+        averageMs,
+        p95Ms: sorted[Math.floor(sorted.length * 0.95)],
+        estimatedFps: 1000 / averageMs,
+        framesOver25Ms: samples.filter((value) => value > 25).length
+      })
+    }
+  }
+  requestAnimationFrame(sample)
+})`)
 const webgl = await evaluate(`(() => {
   const canvas = document.querySelector('canvas')
   const context = canvas?.getContext('webgl2') ?? canvas?.getContext('webgl')
   if (!canvas || !context) return null
+  const rendererInfo = context.getExtension('WEBGL_debug_renderer_info')
   return {
     width: canvas.width,
     height: canvas.height,
     renderer: context.getParameter(context.RENDERER),
+    unmaskedRenderer: rendererInfo ? context.getParameter(rendererInfo.UNMASKED_RENDERER_WEBGL) : 'unavailable',
     version: context.getParameter(context.VERSION),
     contextLost: context.isContextLost(),
     glError: context.getError()
   }
 })()`)
 assert(webgl && webgl.width > 0 && webgl.height > 0, 'WebGL context is unavailable')
+const softwareRenderer = /swiftshader|llvmpipe|software/i.test(webgl.unmaskedRenderer)
+if (!softwareRenderer) {
+  assert(frameTiming.averageMs < 34 && frameTiming.p95Ms < 50, `Gameplay frame pacing regressed: ${JSON.stringify(frameTiming)}`)
+}
 await screenshot('game-playing')
 
 await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape' })
@@ -185,7 +278,10 @@ console.log(JSON.stringify({
   mainMenu: true,
   playingHud: true,
   pauseMenu: true,
+  responsiveLayouts,
   frameState,
+  frameTiming,
   webgl,
+  softwareRenderer,
   browserErrors: browserErrors.length
 }))

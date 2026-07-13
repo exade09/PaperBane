@@ -3,6 +3,7 @@ dist
 .vercel
 .npm-cache
 .edge-test-*
+.edge-profile/
 smoke-artifacts
 *-smoke.png
 *.local

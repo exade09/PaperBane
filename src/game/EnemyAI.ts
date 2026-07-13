@@ -1,7 +1,61 @@
 import * as THREE from 'three'
 import { EnemyKind, GAME_CONFIG } from './GameConfig'
 
-export type EnemyState = 'IDLE' | 'CHASE' | 'ATTACK' | 'STAGGER' | 'DEAD'
+export type EnemyState =
+  | 'IDLE'
+  | 'PATROL'
+  | 'DETECT'
+  | 'CHASE'
+  | 'ATTACK'
+  | 'RECOVER'
+  | 'STAGGER'
+  | 'DEAD'
+
+export interface EnemyTiming {
+  idleDuration: number
+  patrolDuration: number
+  patrolSpeedMultiplier: number
+  detectDuration: number
+  attackDuration: number
+  activeStart: number
+  activeEnd: number
+  recoveryOnHit: number
+  recoveryOnMiss: number
+  followupDelay: number
+  staggerDuration: number
+  attackStartRange: number
+}
+
+export const ENEMY_TIMINGS: Record<EnemyKind, EnemyTiming> = {
+  walker: {
+    idleDuration: 1.15,
+    patrolDuration: 2.6,
+    patrolSpeedMultiplier: 0.38,
+    detectDuration: 0.44,
+    attackDuration: 0.88,
+    activeStart: 0.48,
+    activeEnd: 0.68,
+    recoveryOnHit: 0.5,
+    recoveryOnMiss: 0.7,
+    followupDelay: 0.18,
+    staggerDuration: 0.36,
+    attackStartRange: GAME_CONFIG.enemies.walker.attackRange
+  },
+  runner: {
+    idleDuration: 0.72,
+    patrolDuration: 1.8,
+    patrolSpeedMultiplier: 0.34,
+    detectDuration: 0.28,
+    attackDuration: 1.02,
+    activeStart: 0.38,
+    activeEnd: 0.94,
+    recoveryOnHit: 0.72,
+    recoveryOnMiss: 1.18,
+    followupDelay: 0.24,
+    staggerDuration: 0.42,
+    attackStartRange: 5.4
+  }
+}
 
 export interface EnemyDecisionInput {
   kind: EnemyKind
@@ -10,6 +64,7 @@ export interface EnemyDecisionInput {
   canSeePlayer: boolean
   stateTime: number
   attackCooldown: number
+  recoveryDuration: number
 }
 
 export const decideEnemyState = ({
@@ -18,17 +73,43 @@ export const decideEnemyState = ({
   distance,
   canSeePlayer,
   stateTime,
-  attackCooldown
+  attackCooldown,
+  recoveryDuration
 }: EnemyDecisionInput): EnemyState => {
-  if (state === 'DEAD' || state === 'STAGGER') return state
+  if (state === 'DEAD') return 'DEAD'
   const config = GAME_CONFIG.enemies[kind]
-  if (!canSeePlayer || distance > config.detectionRange) return 'IDLE'
-  if (state === 'ATTACK') {
-    const duration = kind === 'runner' ? 1.55 : 1.18
-    return stateTime >= duration ? 'CHASE' : 'ATTACK'
+  const timing = ENEMY_TIMINGS[kind]
+  const playerDetected = canSeePlayer && distance <= config.detectionRange
+
+  if (state === 'STAGGER') {
+    if (stateTime < timing.staggerDuration) return 'STAGGER'
+    return playerDetected ? 'CHASE' : 'PATROL'
   }
-  const attackStartRange = kind === 'runner' ? 5.4 : config.attackRange
-  if (distance <= attackStartRange && attackCooldown <= 0) return 'ATTACK'
+  if (state === 'ATTACK') {
+    return stateTime >= timing.attackDuration ? 'RECOVER' : 'ATTACK'
+  }
+  if (state === 'RECOVER') {
+    if (stateTime < recoveryDuration) return 'RECOVER'
+    return playerDetected ? 'CHASE' : 'PATROL'
+  }
+  if (state === 'DETECT') {
+    if (stateTime < timing.detectDuration) return 'DETECT'
+    if (!playerDetected) return 'PATROL'
+    if (distance <= timing.attackStartRange && attackCooldown <= 0) return 'ATTACK'
+    return 'CHASE'
+  }
+  if (state === 'IDLE') {
+    if (playerDetected) return 'DETECT'
+    return stateTime >= timing.idleDuration ? 'PATROL' : 'IDLE'
+  }
+  if (state === 'PATROL') {
+    if (playerDetected) return 'DETECT'
+    return stateTime >= timing.patrolDuration ? 'IDLE' : 'PATROL'
+  }
+  if (!playerDetected) {
+    return 'PATROL'
+  }
+  if (distance <= timing.attackStartRange && attackCooldown <= 0) return 'ATTACK'
   return 'CHASE'
 }
 

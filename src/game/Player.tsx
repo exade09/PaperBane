@@ -5,15 +5,24 @@ import { GAME_CONFIG } from './GameConfig'
 import { useGameStore } from './GameState'
 import { useCombatSystem } from './CombatSystem'
 import { PlayerModel, type PlayerAnimation } from './PlayerModel'
+import {
+  getPlayerAnimationDuration,
+  getPlayerAnimationMarkerSeconds,
+  isNormalizedWindowActive,
+  PLAYER_ANIMATION_TIMING,
+  type PlayerAnimationTimelineName
+} from './PlayerAnimationConfig'
 import { resolveWorldMovement, type WorldBox } from './WorldCollision'
 
-type ActionKind = 'LIGHT' | 'HEAVY' | 'DODGE' | 'HIT'
+type ActionKind = 'LIGHT' | 'HEAVY' | 'DODGE' | 'HIT' | 'MEDKIT' | 'SURGE'
 
 interface PlayerAction {
   kind: ActionKind
   elapsed: number
   duration: number
   hitDone: boolean
+  effectDone: boolean
+  soundDone: boolean
   hitTargets: Set<string>
   comboStep: number
   direction: THREE.Vector3
@@ -29,11 +38,13 @@ interface PlayerProps {
   onInteract: () => void
 }
 
-const actionAnimation = (action: PlayerAction): PlayerAnimation => {
-  if (action.kind === 'LIGHT') return `ATTACK_${action.comboStep + 1}` as PlayerAnimation
-  if (action.kind === 'HEAVY') return 'HEAVY'
-  if (action.kind === 'DODGE') return 'DODGE'
-  return 'HIT'
+const actionTimeline = (action: PlayerAction): PlayerAnimationTimelineName | null => {
+  if (action.kind === 'LIGHT') return 'LIGHT_ATTACK'
+  if (action.kind === 'HEAVY') return 'OVERHEAD_STRIKE'
+  if (action.kind === 'DODGE') return 'DODGE_ROLL'
+  if (action.kind === 'MEDKIT') return 'MEDKIT_USE'
+  if (action.kind === 'SURGE') return 'WICK_SURGE'
+  return null
 }
 
 export const cameraYawToFacingYaw = (cameraYaw: number) =>
@@ -71,7 +82,11 @@ export function Player({
     if (state.status !== 'PLAYING') return
     const current = action.current
     if (current) {
-      if (current.kind === 'LIGHT' && current.elapsed >= 0.14) bufferedLight.current = true
+      const progress = current.kind === 'LIGHT' ? current.elapsed / current.duration : 0
+      if (
+        current.kind === 'LIGHT' &&
+        progress >= PLAYER_ANIMATION_TIMING.LIGHT_ATTACK.events.inputBuffer![0]
+      ) bufferedLight.current = true
       return
     }
     const now = performance.now() / 1000
@@ -81,15 +96,16 @@ export function Player({
     action.current = {
       kind: 'LIGHT',
       elapsed: 0,
-      duration: 0.5 / speed,
+      duration: getPlayerAnimationDuration('LIGHT_ATTACK', speed),
       hitDone: false,
+      effectDone: false,
+      soundDone: false,
       hitTargets: new Set(),
       comboStep: comboStep.current,
       direction: new THREE.Vector3()
     }
     bufferedLight.current = false
     setAnimation(`ATTACK_${comboStep.current + 1}` as PlayerAnimation)
-    combat.emitSound('light-swing', 0.72)
   }, [combat])
 
   const beginHeavy = useCallback(() => {
@@ -105,15 +121,16 @@ export function Player({
     action.current = {
       kind: 'HEAVY',
       elapsed: 0,
-      duration: 0.86 / speed,
+      duration: getPlayerAnimationDuration('OVERHEAD_STRIKE', speed),
       hitDone: false,
+      effectDone: false,
+      soundDone: false,
       hitTargets: new Set(),
       comboStep: 0,
       direction: new THREE.Vector3()
     }
     bufferedLight.current = false
-    setAnimation('HEAVY')
-    combat.emitSound('heavy-swing', 1)
+    setAnimation('OVERHEAD_STRIKE' as PlayerAnimation)
   }, [combat])
 
   const getInputDirection = useCallback(() => {
@@ -142,18 +159,63 @@ export function Player({
     action.current = {
       kind: 'DODGE',
       elapsed: 0,
-      duration: GAME_CONFIG.player.dodgeDuration,
+      duration: getPlayerAnimationDuration('DODGE_ROLL'),
       hitDone: false,
+      effectDone: false,
+      soundDone: false,
       hitTargets: new Set(),
       comboStep: 0,
       direction
     }
     lastDodge.current = now
     lastStaminaUse.current = now
-    invulnerableUntil.current = now + GAME_CONFIG.player.dodgeDuration
-    setAnimation('DODGE')
-    combat.emitSound('dodge', 0.72)
+    setAnimation('DODGE_ROLL' as PlayerAnimation)
   }, [combat, getInputDirection])
+
+  const beginMedkit = useCallback(() => {
+    const state = useGameStore.getState()
+    if (
+      state.status !== 'PLAYING' ||
+      action.current ||
+      state.hp >= GAME_CONFIG.player.maxHp ||
+      state.medkits <= 0
+    ) return
+    action.current = {
+      kind: 'MEDKIT',
+      elapsed: 0,
+      duration: getPlayerAnimationDuration('MEDKIT_USE'),
+      hitDone: true,
+      effectDone: false,
+      soundDone: false,
+      hitTargets: new Set(),
+      comboStep: 0,
+      direction: new THREE.Vector3()
+    }
+    bufferedLight.current = false
+    setAnimation('MEDKIT_USE' as PlayerAnimation)
+  }, [])
+
+  const beginSurge = useCallback(() => {
+    const state = useGameStore.getState()
+    if (
+      state.status !== 'PLAYING' ||
+      action.current ||
+      state.wick < GAME_CONFIG.player.maxWick
+    ) return
+    action.current = {
+      kind: 'SURGE',
+      elapsed: 0,
+      duration: getPlayerAnimationDuration('WICK_SURGE'),
+      hitDone: true,
+      effectDone: false,
+      soundDone: false,
+      hitTargets: new Set(),
+      comboStep: 0,
+      direction: new THREE.Vector3()
+    }
+    bufferedLight.current = false
+    setAnimation('WICK_SURGE' as PlayerAnimation)
+  }, [])
 
   useEffect(() => {
     position.current.set(spawn[0], spawn[1], spawn[2])
@@ -172,11 +234,9 @@ export function Player({
         event.preventDefault()
         beginDodge()
       } else if (event.code === 'KeyQ') {
-        state.useMedkit()
+        beginMedkit()
       } else if (event.code === 'KeyF') {
-        if (state.activateSurge()) {
-          combat.addShake(0.28)
-        }
+        beginSurge()
       } else if (event.code === 'KeyE' && state.status === 'PLAYING') {
         onInteract()
       }
@@ -198,7 +258,7 @@ export function Player({
       window.removeEventListener('mousedown', mouseDown)
       window.removeEventListener('blur', clear)
     }
-  }, [beginDodge, beginHeavy, beginLight, combat, onInteract])
+  }, [beginDodge, beginHeavy, beginLight, beginMedkit, beginSurge, onInteract])
 
   useEffect(() => {
     const receiver = {
@@ -206,10 +266,15 @@ export function Player({
       damage: (amount: number, source: THREE.Vector3) => {
         const state = useGameStore.getState()
         const now = performance.now() / 1000
+        const dodgeAction = action.current?.kind === 'DODGE' ? action.current : null
+        const dodgeInvulnerable = dodgeAction !== null && isNormalizedWindowActive(
+          dodgeAction.elapsed / dodgeAction.duration,
+          PLAYER_ANIMATION_TIMING.DODGE_ROLL.events.invulnerability
+        )
         if (
           state.status !== 'PLAYING' ||
           now < invulnerableUntil.current ||
-          action.current?.kind === 'DODGE'
+          dodgeInvulnerable
         ) return false
         invulnerableUntil.current = now + GAME_CONFIG.player.damageInvulnerability
         state.damagePlayer(amount)
@@ -228,6 +293,8 @@ export function Player({
             elapsed: 0,
             duration: 0.38,
             hitDone: true,
+            effectDone: true,
+            soundDone: true,
             hitTargets: new Set(),
             comboStep: 0,
             direction: away
@@ -283,13 +350,52 @@ export function Player({
     if (currentAction) {
       const previousElapsed = currentAction.elapsed
       currentAction.elapsed += delta
+      const timelineName = actionTimeline(currentAction)
+      const animationProgress = Math.min(1, currentAction.elapsed / currentAction.duration)
+      const previousProgress = Math.min(1, previousElapsed / currentAction.duration)
+      if (timelineName && !currentAction.soundDone) {
+        const speedMultiplier = PLAYER_ANIMATION_TIMING[timelineName].duration / currentAction.duration
+        const soundTime = getPlayerAnimationMarkerSeconds(timelineName, 'sound', speedMultiplier)
+        if (soundTime !== null && previousElapsed < soundTime && currentAction.elapsed >= soundTime) {
+          if (currentAction.kind === 'LIGHT') combat.emitSound('light-swing', 0.72)
+          if (currentAction.kind === 'HEAVY') combat.emitSound('heavy-swing', 1)
+          if (currentAction.kind === 'DODGE') combat.emitSound('dodge', 0.72)
+          currentAction.soundDone = true
+        }
+      }
+      if (timelineName && !currentAction.effectDone) {
+        const speedMultiplier = PLAYER_ANIMATION_TIMING[timelineName].duration / currentAction.duration
+        const commitTime = getPlayerAnimationMarkerSeconds(timelineName, 'commit', speedMultiplier)
+        if (commitTime !== null && previousElapsed < commitTime && currentAction.elapsed >= commitTime) {
+          if (currentAction.kind === 'MEDKIT') {
+            if (state.useMedkit()) combat.emitSound('medkit', 0.8)
+            currentAction.effectDone = true
+          } else if (currentAction.kind === 'SURGE') {
+            if (state.activateSurge()) combat.addShake(0.28)
+            currentAction.effectDone = true
+          }
+        }
+      }
       if (currentAction.kind === 'DODGE') {
-        const desired = position.current.clone().addScaledVector(currentAction.direction, delta * 12.4)
+        const speed = GAME_CONFIG.player.dodgeDistance * Math.PI / (2 * currentAction.duration) * Math.sin(Math.PI * animationProgress)
+        const desired = position.current.clone().addScaledVector(currentAction.direction, delta * speed)
+        position.current.copy(resolveWorldMovement(position.current, desired, 0.46, extraColliders))
+        const targetYaw = Math.atan2(currentAction.direction.x, currentAction.direction.z)
+        let difference = targetYaw - facingYaw.current
+        while (difference > Math.PI) difference -= Math.PI * 2
+        while (difference < -Math.PI) difference += Math.PI * 2
+        facingYaw.current += difference * Math.min(1, delta * 16)
+      } else if (
+        currentAction.kind === 'HEAVY' &&
+        isNormalizedWindowActive(animationProgress, PLAYER_ANIMATION_TIMING.OVERHEAD_STRIKE.events.movement)
+      ) {
+        const forward = new THREE.Vector3(Math.sin(facingYaw.current), 0, Math.cos(facingYaw.current))
+        const desired = position.current.clone().addScaledVector(forward, delta * 1.75)
         position.current.copy(resolveWorldMovement(position.current, desired, 0.46, extraColliders))
       }
-      const activeTime = currentAction.kind === 'HEAVY' ? currentAction.duration * 0.47 : currentAction.duration * 0.38
-      const activeEnd = activeTime + currentAction.duration * (currentAction.kind === 'HEAVY' ? 0.2 : 0.18)
-      const inActiveWindow = currentAction.elapsed >= activeTime && previousElapsed <= activeEnd
+      const damageWindow = timelineName ? PLAYER_ANIMATION_TIMING[timelineName].events.damage : undefined
+      const inActiveWindow = damageWindow !== undefined &&
+        animationProgress >= damageWindow[0] && previousProgress <= damageWindow[1]
       if ((currentAction.kind === 'LIGHT' || currentAction.kind === 'HEAVY') && inActiveWindow) {
         facingYaw.current = cameraYawToFacingYaw(cameraYaw.current)
         const forward = new THREE.Vector3(Math.sin(facingYaw.current), 0, Math.cos(facingYaw.current)).normalize()
@@ -320,7 +426,7 @@ export function Player({
           if (heavy) combat.emitSound('heavy-impact', 1)
         }
       }
-      if (currentAction.elapsed > activeEnd) currentAction.hitDone = true
+      if (damageWindow && animationProgress > damageWindow[1]) currentAction.hitDone = true
       if (currentAction.elapsed >= currentAction.duration) {
         if (currentAction.kind === 'LIGHT') {
           lastLightEnd.current = now

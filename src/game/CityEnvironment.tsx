@@ -50,6 +50,24 @@ const PAPER_DEBRIS: Array<[number, number, number, number]> = Array.from({ lengt
   index * 0.73
 ])
 
+const FOREGROUND_CURB_STONES = [-1, 1].flatMap((side) =>
+  Array.from({ length: 29 }, (_, index) => ({
+    side,
+    z: -18.1 + index * 1.58,
+    missing: (index * 5 + side) % 17 === 0,
+    sink: index % 11 === 0 ? -0.07 : 0,
+    yaw: ((index * 7) % 5 - 2) * 0.007
+  })).filter((stone) => !stone.missing)
+)
+
+const ROAD_SCARS = Array.from({ length: 38 }, (_, index) => ({
+  x: ((index * 5.83) % 15.2) - 7.6,
+  z: 24 - ((index * 7.91) % 142),
+  yaw: (index % 7 - 3) * 0.24,
+  length: 0.48 + (index % 5) * 0.23,
+  width: 0.022 + (index % 3) * 0.012
+}))
+
 function useSurfaceNoise() {
   const texture = useMemo(() => {
     const canvas = document.createElement('canvas')
@@ -196,23 +214,35 @@ function RecessedWindows({ building }: { building: BuildingDefinition }) {
 
   return (
     <group>
+      <Instances limit={windows.length} range={windows.length}>
+        <boxGeometry args={[0.12, 1.16, 0.96]} />
+        <meshStandardMaterial color="#171b19" roughness={0.88} metalness={0.18} />
+        {windows.map((window, index) => (
+          <Instance
+            key={`recess-${index}`}
+            position={[window.position[0] - streetSide * 0.012, window.position[1], window.position[2]]}
+            rotation={[0, 0, window.broken ? (index % 2 ? 0.035 : -0.04) : 0]}
+            scale={window.broken ? [1, 0.88, 0.9] : [1, 1, 1]}
+          />
+        ))}
+      </Instances>
       <Instances limit={dark.length} range={dark.length}>
-        <planeGeometry args={[0.72, 0.92]} />
+        <planeGeometry args={[0.68, 0.86]} />
         <meshStandardMaterial color="#101413" roughness={0.31} metalness={0.28} />
         {dark.map((window, index) => (
           <Instance
             key={index}
-            position={window.position}
+            position={[window.position[0] + streetSide * 0.056, window.position[1], window.position[2]]}
             rotation={[0, rotationY, window.broken ? (index % 2 ? 0.07 : -0.09) : 0]}
             scale={window.broken ? [0.84, 0.74, 1] : [1, 1, 1]}
           />
         ))}
       </Instances>
       <Instances limit={lit.length} range={lit.length}>
-        <planeGeometry args={[0.72, 0.92]} />
-        <meshStandardMaterial color="#8bb8a2" emissive="#1d4b3c" emissiveIntensity={0.78} roughness={0.35} toneMapped={false} />
+        <planeGeometry args={[0.68, 0.86]} />
+        <meshStandardMaterial color="#8bb8a2" emissive="#1d4b3c" emissiveIntensity={0.52} roughness={0.48} toneMapped={false} />
         {lit.map((window, index) => (
-          <Instance key={index} color={window.color} position={window.position} rotation={[0, rotationY, 0]} />
+          <Instance key={index} color={window.color} position={[window.position[0] + streetSide * 0.056, window.position[1], window.position[2]]} rotation={[0, rotationY, 0]} />
         ))}
       </Instances>
       {Array.from({ length: floors }, (_, floor) => (
@@ -245,6 +275,77 @@ function RuinedBuilding({ building, surfaceMap }: { building: BuildingDefinition
         <meshStandardMaterial color={building.accent} roughness={0.98} bumpMap={surfaceMap} bumpScale={0.045} flatShading />
       </mesh>
       <RecessedWindows building={building} />
+
+      {/* Spend the extra facade geometry in the primary on-screen street only. */}
+      {building.seed <= 6 && <>
+      {[-0.43, 0, 0.43].map((offset, index) => (
+        <mesh
+          key={`pier-${offset}`}
+          position={[faceX + streetSide * 0.115, building.height * 0.48, offset * building.depth]}
+          rotation={[0, 0, index === 0 && building.damage > 2 ? streetSide * 0.012 : 0]}
+          castShadow
+        >
+          <boxGeometry args={[0.21, building.height * 0.84, 0.22 + (index % 2) * 0.09]} />
+          <meshStandardMaterial color={index === 1 ? '#434740' : '#383d38'} roughness={0.94} bumpMap={surfaceMap} bumpScale={0.035} />
+        </mesh>
+      ))}
+      {[0.18, 0.5, 0.82].map((heightRatio, index) => (
+        <mesh
+          key={`belt-${heightRatio}`}
+          position={[faceX + streetSide * 0.13, building.height * heightRatio, 0]}
+          rotation={[0, 0, index === 2 ? (building.seed % 2 ? 0.008 : -0.012) : 0]}
+          castShadow
+        >
+          <boxGeometry args={[0.23, index === 2 ? 0.2 : 0.13, building.depth * (index === 0 ? 0.86 : 0.91)]} />
+          <meshStandardMaterial color={index === 0 ? '#272c28' : '#4a4c45'} roughness={0.92} metalness={0.05} />
+        </mesh>
+      ))}
+
+      {/* Shallow shopfront, canopy and utility box anchor the readable ground floor. */}
+      <group position={[faceX + streetSide * 0.16, 0, building.depth * 0.18]}>
+        <mesh position={[0, 1.18, 0]} castShadow>
+          <boxGeometry args={[0.24, 2.22, Math.min(2.55, building.depth * 0.3)]} />
+          <meshStandardMaterial color="#171d1a" roughness={0.82} metalness={0.27} />
+        </mesh>
+        {[-0.34, 0, 0.34].map((offset) => (
+          <mesh key={offset} position={[streetSide * 0.13, 1.12, offset * Math.min(2.55, building.depth * 0.3)]}>
+            <boxGeometry args={[0.09, 1.82, 0.08]} />
+            <meshStandardMaterial color="#4c5049" roughness={0.72} metalness={0.42} />
+          </mesh>
+        ))}
+        <mesh position={[streetSide * 0.22, 2.46, 0]} rotation={[0, 0, streetSide * -0.055]} castShadow>
+          <boxGeometry args={[0.58, 0.18, Math.min(3.2, building.depth * 0.36)]} />
+          <meshStandardMaterial color={building.seed % 2 ? '#37483a' : '#453948'} roughness={0.78} metalness={0.25} />
+        </mesh>
+        <mesh position={[streetSide * 0.18, 1.15, building.depth * 0.22]} castShadow>
+          <boxGeometry args={[0.33, 0.82, 0.62]} />
+          <meshStandardMaterial color="#343a34" roughness={0.73} metalness={0.44} />
+        </mesh>
+      </group>
+      </>}
+
+      {building.seed <= 6 && building.seed % 2 === 0 && (
+        <group position={[faceX + streetSide * 0.23, building.height * 0.55, -building.depth * 0.17]}>
+          {[0, 1].map((level) => (
+            <group key={level} position={[0, level * 2.55, 0]}>
+              <mesh rotation={[0, 0, streetSide * -0.025]} castShadow>
+                <boxGeometry args={[0.72, 0.12, 2.6]} />
+                <meshStandardMaterial color="#2f332f" roughness={0.72} metalness={0.62} />
+              </mesh>
+              {[-1.05, -0.35, 0.35, 1.05].map((z) => (
+                <mesh key={z} position={[streetSide * 0.32, 0.54, z]}>
+                  <boxGeometry args={[0.055, 1.08, 0.055]} />
+                  <meshStandardMaterial color="#454840" roughness={0.66} metalness={0.7} />
+                </mesh>
+              ))}
+            </group>
+          ))}
+          <mesh position={[streetSide * 0.38, 1.25, 1.16]} rotation={[0.62, 0, Math.PI / 2]}>
+            <boxGeometry args={[0.08, 2.85, 0.08]} />
+            <meshStandardMaterial color="#3b3d37" roughness={0.68} metalness={0.67} />
+          </mesh>
+        </group>
+      )}
 
       <group position={[faceX + streetSide * 0.08, 0, -building.depth * 0.29]}>
         <mesh position={[0, 1.04, 0]} castShadow>
@@ -291,6 +392,10 @@ function RuinedBuilding({ building, surfaceMap }: { building: BuildingDefinition
           </mesh>
         )
       })}
+      <mesh position={[faceX + streetSide * 0.14, building.height - 0.24, 0]} rotation={[0, 0, (building.seed % 3 - 1) * 0.012]} castShadow>
+        <boxGeometry args={[0.3, 0.36, building.depth * 0.96]} />
+        <meshStandardMaterial color="#202522" roughness={0.91} bumpMap={surfaceMap} bumpScale={0.028} />
+      </mesh>
       <mesh position={[-streetSide * building.width * 0.18, building.height + 0.65, -building.depth * 0.22]} rotation={[0, 0, 0.04]} castShadow>
         <boxGeometry args={[building.width * 0.24, 1.3, building.depth * 0.22]} />
         <meshStandardMaterial color="#252a27" roughness={0.96} />
@@ -312,16 +417,35 @@ function RuinedBuilding({ building, surfaceMap }: { building: BuildingDefinition
 }
 
 function Puddle({ x, z, scale, rotation }: { x: number; z: number; scale: number; rotation: number }) {
+  const shape = useMemo(() => {
+    const result = new THREE.Shape()
+    const points = Array.from({ length: 18 }, (_, index) => {
+      const angle = index / 18 * Math.PI * 2
+      const radius = 0.62 + Math.sin(index * 2.71 + x * 0.4) * 0.1 + Math.cos(index * 4.13 + z * 0.08) * 0.045
+      return new THREE.Vector2(Math.cos(angle) * radius, Math.sin(angle) * radius)
+    })
+    result.moveTo(points[0].x, points[0].y)
+    points.slice(1).forEach((point) => result.lineTo(point.x, point.y))
+    result.closePath()
+    return result
+  }, [x, z])
   return (
     <group position={[x, 0.008, z]} rotation={[0, rotation, 0]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} scale={[scale, scale * 0.52, 1]} receiveShadow>
-        <circleGeometry args={[0.7, 18]} />
-        <meshStandardMaterial color="#293c39" roughness={0.07} metalness={0.54} transparent opacity={0.78} />
+        <shapeGeometry args={[shape]} />
+        <meshStandardMaterial color="#26332f" roughness={0.48} metalness={0.04} transparent opacity={0.42} depthWrite={false} />
       </mesh>
-      <mesh position={[0.18, 0.005, -0.06]} rotation={[-Math.PI / 2, 0, 0.22]} scale={[scale * 0.52, scale * 0.05, 1]}>
-        <circleGeometry args={[0.68, 16]} />
-        <meshBasicMaterial color="#8ba89d" transparent opacity={0.12} depthWrite={false} />
-      </mesh>
+      {[-0.24, 0.18, 0.42].map((offset, index) => (
+        <mesh
+          key={offset}
+          position={[offset * scale, 0.006 + index * 0.001, (-0.16 + index * 0.12) * scale]}
+          rotation={[-Math.PI / 2, 0, 0.17 + index * 0.46]}
+          scale={[scale * (0.22 + index * 0.04), scale * 0.018, 1]}
+        >
+          <circleGeometry args={[0.68, 8]} />
+          <meshBasicMaterial color={index === 1 ? '#879b93' : '#5d716a'} transparent opacity={0.05 + index * 0.012} depthWrite={false} />
+        </mesh>
+      ))}
     </group>
   )
 }
@@ -334,7 +458,7 @@ function WetStreet({ surfaceMap }: { surfaceMap: THREE.Texture }) {
       {segments.map(([z, width, depth], index) => (
         <mesh key={z} position={[0, -0.17, z]} receiveShadow>
           <boxGeometry args={[width, 0.32, depth]} />
-          <meshStandardMaterial color={index % 2 ? '#252c29' : '#222925'} roughness={0.29 + index * 0.025} roughnessMap={surfaceMap} bumpMap={surfaceMap} bumpScale={0.035} metalness={0.24} flatShading />
+          <meshStandardMaterial color={index % 2 ? '#29302d' : '#272e2a'} roughness={0.5 + index * 0.025} roughnessMap={surfaceMap} bumpMap={surfaceMap} bumpScale={0.052} metalness={0.09} flatShading />
         </mesh>
       ))}
       {sidewalks.flatMap(([z, halfWidth, depth], segment) => [-1, 1].map((side) => (
@@ -349,17 +473,37 @@ function WetStreet({ surfaceMap }: { surfaceMap: THREE.Texture }) {
           </mesh>
         </group>
       )))}
+      <Instances limit={FOREGROUND_CURB_STONES.length} range={FOREGROUND_CURB_STONES.length}>
+        <boxGeometry args={[0.48, 0.12, 1.42]} />
+        <meshStandardMaterial color="#555950" roughness={0.93} bumpMap={surfaceMap} bumpScale={0.025} />
+        {FOREGROUND_CURB_STONES.map((stone, index) => (
+          <Instance
+            key={index}
+            position={[stone.side * 8.52, 0.1 + stone.sink, stone.z]}
+            rotation={[0, stone.yaw, stone.side * (index % 13 === 0 ? 0.015 : 0)]}
+            color={index % 9 === 0 ? '#454941' : '#555950'}
+          />
+        ))}
+      </Instances>
       {PUDDLES.map(([x, z, scale, rotation], index) => <Puddle key={index} x={x} z={z} scale={scale} rotation={rotation} />)}
-      {Array.from({ length: 22 }, (_, index) => (
-        <mesh
-          key={`crack-${index}`}
-          position={[((index * 5.3) % 15) - 7.5, 0.012, 22 - ((index * 8.21) % 138)]}
-          rotation={[-Math.PI / 2, 0, (index % 5 - 2) * 0.31]}
-        >
-          <planeGeometry args={[0.035 + (index % 2) * 0.025, 0.8 + (index % 4) * 0.32]} />
-          <meshBasicMaterial color="#0a0e0c" transparent opacity={0.78} />
-        </mesh>
-      ))}
+      <Instances limit={ROAD_SCARS.length * 2} range={ROAD_SCARS.length * 2}>
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial color="#090d0b" transparent opacity={0.72} depthWrite={false} />
+        {ROAD_SCARS.flatMap((scar, index) => [
+          <Instance
+            key={`scar-main-${index}`}
+            position={[scar.x, 0.016, scar.z]}
+            rotation={[-Math.PI / 2, 0, scar.yaw]}
+            scale={[scar.width, scar.length, 1]}
+          />,
+          <Instance
+            key={`scar-branch-${index}`}
+            position={[scar.x + Math.sin(scar.yaw) * 0.23, 0.017, scar.z + Math.cos(scar.yaw) * 0.23]}
+            rotation={[-Math.PI / 2, 0, scar.yaw + (index % 2 ? 0.78 : -0.72)]}
+            scale={[scar.width * 0.72, scar.length * 0.42, 1]}
+          />
+        ])}
+      </Instances>
       {Array.from({ length: 9 }, (_, index) => (
         <mesh
           key={`hole-${index}`}
@@ -399,6 +543,14 @@ function DebrisCluster({ position, seed }: { position: Vec3; seed: number }) {
       <mesh position={[0.18, 0.38, 0.15]} rotation={[0.2, 0.1, -0.15]} castShadow>
         <dodecahedronGeometry args={[0.42, 1]} />
         <meshStandardMaterial color="#111613" roughness={0.88} flatShading />
+      </mesh>
+      <mesh position={[-0.42, 0.18, 0.36]} rotation={[Math.PI / 2, seed * 0.19, 0.12]} castShadow>
+        <cylinderGeometry args={[0.14, 0.18, 0.64, 7]} />
+        <meshStandardMaterial color={seed % 2 ? '#644938' : '#46544a'} roughness={0.82} metalness={0.38} flatShading />
+      </mesh>
+      <mesh position={[0.58, 0.12, -0.28]} rotation={[0.08, seed * 0.27, -0.05]} castShadow>
+        <boxGeometry args={[0.18, 0.09, 1.28]} />
+        <meshStandardMaterial color="#6b604c" roughness={0.98} />
       </mesh>
     </group>
   )
@@ -464,6 +616,18 @@ function PumpStationSet() {
           <boxGeometry args={[6.8, 0.28, 9.6]} />
           <meshStandardMaterial color="#2a2e2b" roughness={0.9} />
         </mesh>
+        {[-6.1, 0, 6.1].map((x, index) => (
+          <group key={`beam-${x}`} position={[x, 4.18, 0]} rotation={[0, 0, index === 0 ? 0.018 : index === 2 ? -0.014 : 0]}>
+            <mesh castShadow>
+              <boxGeometry args={[0.2, 0.36, 12.6]} />
+              <meshStandardMaterial color="#4a4a40" roughness={0.76} metalness={0.48} />
+            </mesh>
+            <mesh position={[0, -0.22, index % 2 ? -2.4 : 2.2]}>
+              <boxGeometry args={[0.72, 0.06, 1.4]} />
+              <meshStandardMaterial color="#d9cfab" emissive="#a98247" emissiveIntensity={index === 1 ? 0.42 : 0.24} roughness={0.62} />
+            </mesh>
+          </group>
+        ))}
         {[-8.15, 8.15].flatMap((x) => [-5.25, 5.25].map((z) => (
           <group key={`${x}-${z}`} position={[x, 0, z]}>
             <mesh position={[0, 2.1, 0]} castShadow>
@@ -481,6 +645,16 @@ function PumpStationSet() {
           <meshStandardMaterial color="#171b18" roughness={0.7} metalness={0.48} />
         </mesh>
         <PaintedSign text="PUMP.FUN" position={[0, 4.46, 7.01]} width={6.4} height={1.02} />
+        <group position={[-5.6, 5.55, 7.08]} rotation={[0, 0, -0.67]}>
+          <mesh position={[0, 0.34, 0]}>
+            <capsuleGeometry args={[0.32, 0.58, 5, 10]} />
+            <meshStandardMaterial color="#d6ddd5" emissive="#59625c" emissiveIntensity={0.18} roughness={0.58} />
+          </mesh>
+          <mesh position={[0, -0.34, 0]}>
+            <capsuleGeometry args={[0.32, 0.58, 5, 10]} />
+            <meshStandardMaterial color="#568f69" emissive="#285c35" emissiveIntensity={0.35} roughness={0.54} />
+          </mesh>
+        </group>
       </group>
 
       <PumpUnit position={[-5.5, 0, -32.5]} accent="#7dff48" />
@@ -514,8 +688,37 @@ function PumpStationSet() {
           <meshStandardMaterial color="#1a1d1b" roughness={0.8} metalness={0.25} />
         </mesh>
       </group>
+      <group position={[10.75, 0, -40.5]}>
+        <mesh position={[0, 2.15, 0]} castShadow receiveShadow>
+          <boxGeometry args={[4.1, 4.3, 8.2]} />
+          <meshStandardMaterial color="#303630" roughness={0.93} flatShading />
+        </mesh>
+        <mesh position={[-2.1, 1.45, -1.25]} castShadow>
+          <boxGeometry args={[0.18, 2.9, 2.25]} />
+          <meshStandardMaterial color="#121714" roughness={0.8} metalness={0.25} />
+        </mesh>
+        <mesh position={[-2.2, 1.72, 1.4]}>
+          <boxGeometry args={[0.1, 1.5, 2.1]} />
+          <meshStandardMaterial color="#18231f" emissive="#1f4b3b" emissiveIntensity={0.25} roughness={0.44} />
+        </mesh>
+        {[-0.68, 0, 0.68].map((z) => (
+          <mesh key={z} position={[-2.28, 1.72, 1.4 + z]}>
+            <boxGeometry args={[0.08, 1.56, 0.055]} />
+            <meshStandardMaterial color="#5d6259" roughness={0.72} metalness={0.52} />
+          </mesh>
+        ))}
+        <mesh position={[-2.25, 3.62, 0.3]} rotation={[0, 0, -0.025]} castShadow>
+          <boxGeometry args={[0.38, 0.34, 6.8]} />
+          <meshStandardMaterial color="#494c43" roughness={0.82} metalness={0.18} />
+        </mesh>
+        <mesh position={[0.3, 4.52, -0.35]} rotation={[0.03, 0, -0.025]} castShadow>
+          <boxGeometry args={[4.6, 0.34, 8.7]} />
+          <meshStandardMaterial color="#242a26" roughness={0.94} />
+        </mesh>
+      </group>
       <PaintedSign text="NEXT LAUNCH // UNKNOWN" position={[11.8, 3.3, -26]} rotation={[0, -Math.PI / 2, 0]} width={4.7} height={1.12} color="#7dff48" />
-      <pointLight position={[0, 4.1, -37]} color="#8dff63" intensity={1.05} distance={14} decay={2} />
+      <pointLight position={[0, 4.1, -37]} color="#8dff63" intensity={0.9} distance={15} decay={2} />
+      <pointLight position={[-7.4, 3.3, -33]} color="#e7ba72" intensity={0.42} distance={8} decay={2} />
     </group>
   )
 }
@@ -533,6 +736,16 @@ function SolanaGateSet() {
             <boxGeometry args={[2, 1.2, 2.35]} />
             <meshStandardMaterial color="#252926" roughness={0.94} />
           </mesh>
+          <mesh position={[side * 0.48, 2.1, -0.08]} rotation={[0, 0, side * -0.035]} castShadow>
+            <boxGeometry args={[1.1, 4.2, 2.55]} />
+            <meshStandardMaterial color="#292f2b" roughness={0.94} flatShading />
+          </mesh>
+          {[1.15, 2.75, 4.25].map((y, index) => (
+            <mesh key={y} position={[-side * 0.78, y, 0.95]} rotation={[0, 0, side * (index - 1) * 0.018]} castShadow>
+              <boxGeometry args={[0.68 + index * 0.1, 0.26, 0.42]} />
+              <meshStandardMaterial color={index === 1 ? '#464944' : '#383d38'} roughness={0.91} />
+            </mesh>
+          ))}
           <mesh position={[-side * 0.7, 2.2, 1.08]}>
             <planeGeometry args={[0.72, 3.4]} />
             <meshStandardMaterial color="#111512" emissive={side > 0 ? '#32e6cf' : '#985cff'} emissiveIntensity={0.38} roughness={0.36} />
@@ -543,6 +756,12 @@ function SolanaGateSet() {
         <boxGeometry args={[13.2, 1.45, 2.15]} />
         <meshStandardMaterial color="#282c29" roughness={0.87} flatShading />
       </mesh>
+      {[-4.9, -2.45, 0, 2.45, 4.9].map((x, index) => (
+        <mesh key={x} position={[x, 7.17 + (index % 2) * 0.14, -0.05]} rotation={[0, 0, (index - 2) * 0.012]} castShadow>
+          <boxGeometry args={[2.18, 0.48 + (index % 2) * 0.18, 2.28]} />
+          <meshStandardMaterial color={index === 2 ? '#343936' : '#262b28'} roughness={0.95} flatShading />
+        </mesh>
+      ))}
       <mesh position={[-3.25, 6.38, 1.12]} rotation={[0, 0, 0.08]}>
         <boxGeometry args={[5.6, 0.32, 0.1]} />
         <meshStandardMaterial color="#985cff" emissive="#6337a3" emissiveIntensity={1.2} toneMapped={false} />
@@ -674,6 +893,8 @@ export function CityEnvironment({ quality, reducedMotion }: { quality: boolean; 
       ].map(([x, y, z, seed]) => <DebrisCluster key={seed} position={[x, y, z]} seed={seed} />)}
       <PaintedSign text="TRADE // LAUNCH // SURVIVE" position={[-8.15, 3.1, 2]} rotation={[0, Math.PI / 2, -0.03]} width={5.1} height={1.05} />
       <PaintedSign text="PAPER HANDS" position={[8.15, 2.8, -8]} rotation={[0, -Math.PI / 2, 0.04]} width={4.5} height={1.05} color="#c9cec8" secondary="#985cff" />
+      <PaintedSign text="HODL // DISTRICT 6" position={[8.62, 5.25, 14.2]} rotation={[0, -Math.PI / 2, -0.025]} width={3.45} height={0.82} color="#8bcf58" secondary="#55416f" />
+      <PaintedSign text="LAST EXIT" position={[-8.7, 4.45, 17.4]} rotation={[0, Math.PI / 2, 0.04]} width={2.9} height={0.76} color="#d2b476" secondary="#6d3f45" />
       <Rain quality={quality} reducedMotion={reducedMotion} />
     </group>
   )
