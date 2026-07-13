@@ -123,17 +123,29 @@ const readActors = () => evaluate(`(() => {
     group.traverse((child) => { if (child.isMesh) count += 1 })
     return count
   }
-  const enemies = groups.filter((group) => {
-    const count = meshCount(group)
-    return group.children.length === 1 && count >= 60 && count <= 140 && group.position.z > -80
-  })
-  const player = groups.find((group) => group.children.some((child) => child.type === 'PointLight') && (() => {
+  const expectedEnemyIds = ['street-w1', 'street-w2', 'pump-w1', 'pump-w2', 'pump-w3', 'pump-r1', 'pump-r2']
+  const namedEnemies = expectedEnemyIds
+    .map((id) => groups.find((group) => group.name.startsWith('paper-hand-') && group.name.endsWith('-' + id)))
+    .filter(Boolean)
+  const enemies = namedEnemies.length === expectedEnemyIds.length
+    ? namedEnemies
+    : groups.filter((group) => {
+      const count = meshCount(group)
+      return group.children.length === 1 && count >= 60 && count <= 160 && group.position.z > -80
+    })
+  const namedPlayer = groups.find((group) => group.name === 'paperbane-player')
+  const player = namedPlayer ?? groups.find((group) => group.children.some((child) =>
+    child.type === 'PointLight' && ['7dff48', '91c99a'].includes(child.color?.getHexString?.())
+  ) && (() => {
     const count = meshCount(group)
     return count > 80 && count < 240
   })())
-  const boss = groups.find((group) => group.children.some((child) => child.type === 'PointLight') && (() => {
+  const namedBoss = groups.find((group) => group.name === 'paperbane-paper-king')
+  const boss = namedBoss ?? groups.find((group) => group.children.some((child) =>
+    child.type === 'PointLight' && child.color?.getHexString?.() === 'c63f3f'
+  ) && (() => {
     const count = meshCount(group)
-    return count >= 10 && count < 80 && group.position.z < -80
+    return count >= 10 && count < 260 && group.position.z < -80
   })())
   return {
     player: player?.position.toArray() ?? null,
@@ -173,21 +185,25 @@ const modelMetrics = await evaluate(`(() => {
       uniqueMaterials: materials.size
     }
   }
-  const player = groups.find((group) => group.children.some((child) => child.type === 'PointLight') && (() => {
+  const namedPlayer = groups.find((group) => group.name === 'paperbane-player')
+  const player = namedPlayer ?? groups.find((group) => group.children.some((child) =>
+    child.type === 'PointLight' && ['7dff48', '91c99a'].includes(child.color?.getHexString?.())
+  ) && (() => {
     const count = meshesFor(group).length
     return count > 80 && count < 240
   })())
-  const enemies = groups.filter((group) => group.children.length === 1 && (() => {
-    const count = meshesFor(group).length
-    return count >= 60 && count <= 140 && group.position.z > -80
-  })())
+  const namedEnemies = groups.filter((group) => group.name.startsWith('paper-hand-'))
+  const enemies = namedEnemies.length > 0 ? namedEnemies : groups.filter((group) => group.children.length === 1 && (() => {
+      const count = meshesFor(group).length
+      return count >= 60 && count <= 160 && group.position.z > -80
+    })())
   const weaponCandidates = []
   player?.traverse((object) => {
     if (object.type !== 'Group') return
     const meshes = meshesFor(object)
-    const hasCandleBody = meshes.some((mesh) => {
+    const hasCandleBody = object.name === 'paperbane-candlestick' || meshes.some((mesh) => {
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-      return materials.some((material) => material?.color?.getHexString?.() === '4aa927')
+      return materials.some((material) => ['4aa927', '438e2b'].includes(material?.color?.getHexString?.()))
     })
     if (hasCandleBody) weaponCandidates.push({ object, meshCount: meshes.length })
   })
@@ -199,6 +215,14 @@ const modelMetrics = await evaluate(`(() => {
     enemyInstances: enemies.length
   }
 })()`)
+
+assert(modelMetrics?.player?.meshInstances >= 160, `Detailed player model was not loaded: ${JSON.stringify(modelMetrics)}`)
+assert(modelMetrics?.player?.renderedTriangles >= 19000, `Player geometry regressed: ${JSON.stringify(modelMetrics?.player)}`)
+assert(modelMetrics?.weapon?.meshInstances >= 20, `Detailed candlestick was not loaded: ${JSON.stringify(modelMetrics?.weapon)}`)
+assert(modelMetrics?.weapon?.renderedTriangles >= 1400, `Candlestick geometry regressed: ${JSON.stringify(modelMetrics?.weapon)}`)
+assert(modelMetrics?.enemy?.meshInstances >= 100, `Detailed Paper Hand was not loaded: ${JSON.stringify(modelMetrics?.enemy)}`)
+assert(modelMetrics?.enemy?.renderedTriangles >= 9000, `Paper Hand geometry regressed: ${JSON.stringify(modelMetrics?.enemy)}`)
+assert(modelMetrics?.enemyInstances === 7, `Expected seven Paper Hands: ${JSON.stringify(modelMetrics)}`)
 
 const turnToYaw = async (desiredYaw) => {
   let difference = desiredYaw - cameraYaw
@@ -308,11 +332,24 @@ const attackBossUntilDefeated = async (timeout) => {
   assert(state.bossHp === 0, `Paper King combat timed out: ${JSON.stringify(state)}`)
 }
 
-await move(1350)
-await approachEnemy(0, 3.5)
-const enemyScreenshot = await command('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
 await mkdir('smoke-artifacts', { recursive: true })
+const holderRearScreenshot = await command('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+await writeFile('smoke-artifacts/holder-rear.png', Buffer.from(holderRearScreenshot.data, 'base64'))
+await turnToYaw(Math.PI)
+await delay(420)
+const holderFrontScreenshot = await command('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+await writeFile('smoke-artifacts/holder-front.png', Buffer.from(holderFrontScreenshot.data, 'base64'))
+await turnToYaw(0)
+await delay(260)
+
+await move(1350)
+await approachEnemy(0, 2.8)
+const enemyScreenshot = await command('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
 await writeFile('smoke-artifacts/enemy-closeup.png', Buffer.from(enemyScreenshot.data, 'base64'))
+await click('left')
+await delay(270)
+const impactScreenshot = await command('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+await writeFile('smoke-artifacts/combat-impact.png', Buffer.from(impactScreenshot.data, 'base64'))
 await attackUntil((state) => state.killCount >= 1, 14000, 'First Paper Walker', 0)
 await approachEnemy(1)
 await attackUntil((state) => state.killCount >= 2 && state.progression === 'INTRO_COMPLETE', 20000, 'Intro combat', 1)
@@ -324,6 +361,9 @@ for (let attempt = 0; attempt < 18 && state.progression !== 'PUMP_STATION_ACTIVE
   state = await readState()
 }
 assert(state.progression === 'PUMP_STATION_ACTIVE', `Pump Station did not activate: ${JSON.stringify(state)}`)
+await delay(320)
+const pumpRouteScreenshot = await command('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+await writeFile('smoke-artifacts/pump-route.png', Buffer.from(pumpRouteScreenshot.data, 'base64'))
 
 await approachEnemy(2)
 await attackUntil((current) => current.killCount >= 3, 12000, 'Pump entrance Walker', 2)
@@ -364,11 +404,56 @@ await moveToPoint(0, -91.5, 1.8, 24000)
 state = await readState()
 assert(state.progression === 'BOSS_ACTIVE', `Boss trigger was not reached: ${JSON.stringify(state)}`)
 
+modelMetrics.boss = await evaluate(`(() => {
+  try {
+  const canvas = document.querySelector('canvas')
+  const scene = globalThis.__paperbaneRouteRoots.get(canvas)?.store.getState().scene
+  if (!scene) return null
+  const boss = scene.children.find((child) => child.type === 'Group' && (child.name === 'paperbane-paper-king' || child.children.some((nested) =>
+    nested.type === 'PointLight' && nested.color?.getHexString?.() === 'c63f3f'
+  )))
+  if (!boss) return null
+  const geometries = new Map()
+  const materials = new Set()
+  let meshInstances = 0
+  let renderedTriangles = 0
+  boss.traverse((child) => {
+    if (!child.isMesh || !child.geometry) return
+    meshInstances += 1
+    const positionCount = child.geometry.attributes?.position?.count ?? 0
+    const triangles = child.geometry.index ? child.geometry.index.count / 3 : positionCount / 3
+    if (!Number.isFinite(triangles)) return
+    renderedTriangles += triangles
+    geometries.set(child.geometry.uuid, triangles)
+    const meshMaterials = Array.isArray(child.material) ? child.material : [child.material]
+    meshMaterials.forEach((material) => material && materials.add(material.uuid))
+  })
+  return {
+    meshInstances,
+    renderedTriangles: Math.round(renderedTriangles),
+    uniqueGeometryTriangles: Math.round([...geometries.values()].reduce((sum, value) => sum + value, 0)),
+    uniqueGeometries: geometries.size,
+    uniqueMaterials: materials.size
+  }
+  } catch (error) {
+    return { error: String(error), stack: error?.stack ?? '' }
+  }
+})()`)
+assert(modelMetrics.boss && !modelMetrics.boss.error, `Boss metric collection failed: ${JSON.stringify(modelMetrics.boss)}`)
+assert(modelMetrics.boss.meshInstances >= 100, `Detailed Paper King was not loaded: ${JSON.stringify(modelMetrics.boss)}`)
+assert(modelMetrics.boss.renderedTriangles >= 14000, `Paper King geometry regressed: ${JSON.stringify(modelMetrics.boss)}`)
+
 for (let attempt = 0; attempt < 20 && (await readState()).status !== 'PLAYING'; attempt += 1) await delay(250)
 state = await readState()
 assert(state.status === 'PLAYING', `Boss intro did not return control: ${JSON.stringify(state)}`)
 await turnToYaw(0)
 await move(1100)
+const bossActors = await readActors()
+assert(bossActors?.boss, `Boss transform is unavailable for visual capture: ${JSON.stringify(bossActors)}`)
+await turnToPoint(bossActors.boss[0], bossActors.boss[2])
+const bossScreenshot = await command('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+await mkdir('smoke-artifacts', { recursive: true })
+await writeFile('smoke-artifacts/boss-closeup.png', Buffer.from(bossScreenshot.data, 'base64'))
 await attackBossUntilDefeated(90000)
 for (let attempt = 0; attempt < 24 && (await readState()).status !== 'VICTORY'; attempt += 1) await delay(250)
 state = await readState()
@@ -377,9 +462,14 @@ assert(
   `Paper King death did not complete the game: ${JSON.stringify(state)}`
 )
 
+await delay(600)
 const result = await evaluate(`(() => {
   globalThis.__paperbaneRouteUnsubscribe?.()
   const state = globalThis.__paperbaneRouteStore.getState()
+  const victoryOverlay = document.querySelector('.game-overlay--victory')
+  const victoryPanel = document.querySelector('.game-overlay__panel--victory')
+  const victoryPanelRect = victoryPanel?.getBoundingClientRect()
+  const victoryOverflow = victoryOverlay ? getComputedStyle(victoryOverlay) : null
   return {
     state: {
       progression: state.progression,
@@ -400,12 +490,25 @@ const result = await evaluate(`(() => {
       documentHeight: document.documentElement.scrollHeight,
       bodyWidth: document.body.scrollWidth,
       bodyHeight: document.body.scrollHeight,
-      bodyClass: document.body.className
+      bodyClass: document.body.className,
+      victoryOverlay: victoryOverlay ? {
+        clientWidth: victoryOverlay.clientWidth,
+        scrollWidth: victoryOverlay.scrollWidth,
+        clientHeight: victoryOverlay.clientHeight,
+        scrollHeight: victoryOverlay.scrollHeight,
+        overflowX: victoryOverflow?.overflowX,
+        overflowY: victoryOverflow?.overflowY
+      } : null,
+      victoryPanel: victoryPanelRect ? {
+        left: victoryPanelRect.left,
+        top: victoryPanelRect.top,
+        right: victoryPanelRect.right,
+        bottom: victoryPanelRect.bottom
+      } : null
     }
   }
 })()`)
 
-await delay(600)
 const screenshot = await command('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
 await mkdir('smoke-artifacts', { recursive: true })
 await writeFile('smoke-artifacts/full-route-victory.png', Buffer.from(screenshot.data, 'base64'))
@@ -414,6 +517,75 @@ assert(result.pageText.includes('THE SIGNAL IS') && result.pageText.includes('RE
 assert(result.state.bossHp === 0, 'Boss health did not reach zero')
 assert(result.layout.documentWidth <= result.layout.innerWidth + 1, `Victory layout overflowed horizontally: ${JSON.stringify(result.layout)}`)
 assert(result.layout.documentHeight <= result.layout.innerHeight + 1, `Victory layout overflowed vertically: ${JSON.stringify(result.layout)}`)
+assert(result.layout.victoryOverlay?.overflowX === 'hidden', `Victory overlay did not clip horizontal rays: ${JSON.stringify(result.layout.victoryOverlay)}`)
+assert(result.layout.victoryOverlay?.overflowY === 'hidden', `Desktop victory overlay unexpectedly scrolls: ${JSON.stringify(result.layout.victoryOverlay)}`)
+assert(
+  result.layout.victoryPanel?.left >= 0 &&
+  result.layout.victoryPanel?.top >= 0 &&
+  result.layout.victoryPanel?.right <= result.layout.innerWidth &&
+  result.layout.victoryPanel?.bottom <= result.layout.innerHeight,
+  `Victory panel was clipped: ${JSON.stringify(result.layout)}`
+)
+
+const victoryResponsiveLayouts = []
+for (const viewport of [{ width: 640, height: 560 }, { width: 1024, height: 520 }]) {
+  await command('Emulation.setDeviceMetricsOverride', {
+    width: viewport.width,
+    height: viewport.height,
+    deviceScaleFactor: 1,
+    mobile: false
+  })
+  await delay(220)
+  const responsiveLayout = await evaluate(`(() => {
+    const overlay = document.querySelector('.game-overlay--victory')
+    const panel = document.querySelector('.game-overlay__panel--victory')
+    const gamePage = document.querySelector('.game-page')
+    if (!overlay || !panel || !gamePage) return null
+    overlay.scrollTop = overlay.scrollHeight
+    const panelRect = panel.getBoundingClientRect()
+    const gameRect = gamePage.getBoundingClientRect()
+    const buttons = Array.from(panel.querySelectorAll('button, a')).map((button) => {
+      const rect = button.getBoundingClientRect()
+      return {
+        text: button.textContent.trim(),
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        clippedText: button.scrollWidth > button.clientWidth + 1 || button.scrollHeight > button.clientHeight + 1
+      }
+    })
+    const style = getComputedStyle(overlay)
+    const lastButton = buttons.at(-1)
+    return {
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      documentWidth: document.documentElement.scrollWidth,
+      panel: { left: panelRect.left, right: panelRect.right, top: panelRect.top, bottom: panelRect.bottom },
+      gamePage: { width: gameRect.width, height: gameRect.height },
+      overlay: {
+        clientWidth: overlay.clientWidth,
+        clientHeight: overlay.clientHeight,
+        scrollHeight: overlay.scrollHeight,
+        scrollTop: overlay.scrollTop,
+        overflowX: style.overflowX,
+        overflowY: style.overflowY
+      },
+      buttons,
+      lastButtonVisible: Boolean(lastButton && lastButton.top >= -1 && lastButton.bottom <= window.innerHeight + 1)
+    }
+  })()`)
+  assert(responsiveLayout, `Victory responsive layout did not render at ${JSON.stringify(viewport)}`)
+  assert(responsiveLayout.documentWidth <= viewport.width + 1, `Victory page overflowed at ${JSON.stringify({ viewport, responsiveLayout })}`)
+  assert(responsiveLayout.gamePage.width <= viewport.width + 1 && responsiveLayout.gamePage.height <= viewport.height + 1, `Game viewport minimum size leaked at ${JSON.stringify({ viewport, responsiveLayout })}`)
+  assert(responsiveLayout.panel.left >= 0 && responsiveLayout.panel.right <= viewport.width + 1, `Victory panel clipped horizontally at ${JSON.stringify({ viewport, responsiveLayout })}`)
+  assert(responsiveLayout.overlay.overflowX === 'hidden' && responsiveLayout.overlay.overflowY === 'auto', `Victory overflow policy failed at ${JSON.stringify({ viewport, responsiveLayout })}`)
+  assert(!responsiveLayout.buttons.some((button) => button.clippedText), `Victory button text clipped at ${JSON.stringify({ viewport, responsiveLayout })}`)
+  assert(responsiveLayout.lastButtonVisible, `Victory actions were not reachable by scrolling at ${JSON.stringify({ viewport, responsiveLayout })}`)
+  victoryResponsiveLayouts.push({ viewport, ...responsiveLayout })
+}
+
+await command('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false })
 assert(browserErrors.length === 0, `Browser errors: ${browserErrors.join(' | ')}`)
 socket.close()
-console.log(JSON.stringify({ ...result, modelMetrics, browserErrors }, null, 2))
+console.log(JSON.stringify({ ...result, victoryResponsiveLayouts, modelMetrics, browserErrors }, null, 2))

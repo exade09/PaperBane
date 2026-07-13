@@ -116,17 +116,48 @@ export const decideEnemyState = ({
 export const separationForce = (
   selfId: string,
   position: THREE.Vector3,
-  neighbors: Iterable<{ id: string; position: THREE.Vector3; alive: boolean }>
+  neighbors: Iterable<{ id: string; position: THREE.Vector3; alive: boolean; radius?: number }>,
+  selfRadius = 0.5
 ) => {
   const force = new THREE.Vector3()
   for (const neighbor of neighbors) {
     if (neighbor.id === selfId || !neighbor.alive) continue
     const offset = position.clone().sub(neighbor.position).setY(0)
-    const distanceSq = offset.lengthSq()
-    if (distanceSq < 0.001 || distanceSq > 2.3) continue
-    force.add(offset.normalize().multiplyScalar((1.55 - Math.sqrt(distanceSq)) * 0.9))
+    let distance = offset.length()
+    const preferredDistance = selfRadius + (neighbor.radius ?? 0.5) + 0.18
+    if (distance >= preferredDistance) continue
+    if (distance < 0.001) {
+      const pair = selfId < neighbor.id ? `${selfId}:${neighbor.id}` : `${neighbor.id}:${selfId}`
+      const hash = Array.from(pair).reduce((total, character) => total * 31 + character.charCodeAt(0), 17)
+      const angle = (Math.abs(hash) % 6283) / 1000
+      const sign = selfId < neighbor.id ? 1 : -1
+      offset.set(Math.cos(angle) * sign, 0, Math.sin(angle) * sign)
+      distance = 0
+    } else {
+      offset.divideScalar(distance)
+    }
+    const overlap = preferredDistance - distance
+    force.addScaledVector(offset, overlap * (1.2 + overlap * 0.8))
   }
   return force
+}
+
+export const personalSpaceCorrection = (
+  position: THREE.Vector3,
+  anchor: THREE.Vector3,
+  minimumDistance: number,
+  fallbackSeed: number
+) => {
+  const offset = position.clone().sub(anchor).setY(0)
+  const distance = offset.length()
+  if (distance >= minimumDistance) return offset.set(0, 0, 0)
+  if (distance < 0.001) {
+    const angle = (Math.abs(fallbackSeed * 2654435761) % 6283) / 1000
+    offset.set(Math.cos(angle), 0, Math.sin(angle))
+  } else {
+    offset.divideScalar(distance)
+  }
+  return offset.multiplyScalar(minimumDistance - distance)
 }
 
 export const faceDirection = (currentYaw: number, direction: THREE.Vector3, delta: number, speed = 8) => {

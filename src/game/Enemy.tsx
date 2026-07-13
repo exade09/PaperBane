@@ -5,7 +5,14 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { EnemyKind, GAME_CONFIG } from './GameConfig'
 import { useGameStore } from './GameState'
 import { type CombatTarget, type HitPayload, useCombatSystem } from './CombatSystem'
-import { decideEnemyState, ENEMY_TIMINGS, type EnemyState, faceDirection, separationForce } from './EnemyAI'
+import {
+  decideEnemyState,
+  ENEMY_TIMINGS,
+  type EnemyState,
+  faceDirection,
+  personalSpaceCorrection,
+  separationForce
+} from './EnemyAI'
 import { hasLineOfSight, resolveWorldMovement, type WorldBox } from './WorldCollision'
 
 interface EnemyProps {
@@ -206,8 +213,10 @@ const getPaperHandTexture = (kind: EnemyKind, variant: number) => {
 
 const ENEMY_STATIC_MATERIALS = {
   undershirt: new THREE.MeshStandardMaterial({ color: '#1a1b1b', roughness: 1, flatShading: true }),
-  shirtWalker: new THREE.MeshStandardMaterial({ color: '#2c2b27', roughness: 1, flatShading: true }),
-  shirtRunner: new THREE.MeshStandardMaterial({ color: '#242326', roughness: 1, flatShading: true }),
+  shirtWalker: ['#2c2b27', '#302b27', '#292c29'].map((color) =>
+    new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true })),
+  shirtRunner: ['#242326', '#282329', '#222628'].map((color) =>
+    new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true })),
   skinDark: new THREE.MeshStandardMaterial({ color: '#4a4642', roughness: 1, flatShading: true }),
   wound: new THREE.MeshStandardMaterial({ color: '#61302c', roughness: 1, flatShading: true }),
   hair: new THREE.MeshStandardMaterial({ color: '#151617', roughness: 0.98, flatShading: true }),
@@ -221,10 +230,10 @@ const ENEMY_STATIC_MATERIALS = {
   purple: new THREE.MeshStandardMaterial({ color: '#77539c', roughness: 0.75, flatShading: true }),
   cyan: new THREE.MeshStandardMaterial({ color: '#52a9a2', roughness: 0.75, flatShading: true }),
   chain: new THREE.MeshStandardMaterial({ color: '#6e685c', roughness: 0.48, metalness: 0.55, flatShading: true }),
-  eyeWalker: new THREE.MeshStandardMaterial({ color: '#aaa99f', emissive: '#393a35', emissiveIntensity: 0.22, roughness: 0.82, flatShading: true }),
-  eyeRunner: new THREE.MeshStandardMaterial({ color: '#c59d91', emissive: '#552b2a', emissiveIntensity: 0.22, roughness: 0.82, flatShading: true }),
-  trousersWalker: new THREE.MeshStandardMaterial({ color: '#32322f', roughness: 1, flatShading: true }),
-  trousersRunner: new THREE.MeshStandardMaterial({ color: '#2b2a2d', roughness: 1, flatShading: true })
+  trousersWalker: ['#32322f', '#34302d', '#2d3230'].map((color) =>
+    new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true })),
+  trousersRunner: ['#2b2a2d', '#30292e', '#282e30'].map((color) =>
+    new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true }))
 }
 
 function ZombieHand({ material, mirror = false }: { material: THREE.Material; mirror?: boolean }) {
@@ -250,6 +259,8 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
   const root = useRef<THREE.Group>(null)
   const torso = useRef<THREE.Group>(null)
   const head = useRef<THREE.Group>(null)
+  const jaw = useRef<THREE.Mesh>(null)
+  const mouth = useRef<THREE.Mesh>(null)
   const leftArm = useRef<THREE.Group>(null)
   const rightArm = useRef<THREE.Group>(null)
   const leftForearm = useRef<THREE.Group>(null)
@@ -281,15 +292,34 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
       roughness: 1,
       flatShading: true
     }),
+    eye: new THREE.MeshStandardMaterial({
+      color: kind === 'runner' ? '#c59d91' : '#aaa99f',
+      emissive: kind === 'runner' ? '#7f2925' : '#555545',
+      emissiveIntensity: 0.22,
+      roughness: 0.82,
+      flatShading: true
+    }),
+    attackTell: new THREE.MeshStandardMaterial({
+      color: '#241313',
+      emissive: kind === 'runner' ? '#db3f30' : '#a65331',
+      emissiveIntensity: 0,
+      roughness: 0.92,
+      flatShading: true
+    }),
     ...ENEMY_STATIC_MATERIALS,
-    shirtHem: kind === 'runner' ? ENEMY_STATIC_MATERIALS.shirtRunner : ENEMY_STATIC_MATERIALS.shirtWalker,
-    eye: kind === 'runner' ? ENEMY_STATIC_MATERIALS.eyeRunner : ENEMY_STATIC_MATERIALS.eyeWalker,
-    trousers: kind === 'runner' ? ENEMY_STATIC_MATERIALS.trousersRunner : ENEMY_STATIC_MATERIALS.trousersWalker
+    shirtHem: kind === 'runner'
+      ? ENEMY_STATIC_MATERIALS.shirtRunner[variant]
+      : ENEMY_STATIC_MATERIALS.shirtWalker[variant],
+    trousers: kind === 'runner'
+      ? ENEMY_STATIC_MATERIALS.trousersRunner[variant]
+      : ENEMY_STATIC_MATERIALS.trousersWalker[variant]
   }), [kind, shirtTexture, variant])
 
   useEffect(() => () => {
     materials.shirt.dispose()
     materials.skin.dispose()
+    materials.eye.dispose()
+    materials.attackTell.dispose()
   }, [materials])
 
   useFrame(({ clock }, delta) => {
@@ -298,27 +328,30 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
     const time = clock.elapsedTime
     const runner = kind === 'runner'
     const timing = ENEMY_TIMINGS[kind]
-    let leftArmX = runner ? 0.38 : 0.24
-    let rightArmX = runner ? -0.12 : -0.2
-    let leftArmZ = runner ? 0.18 : 0.13
-    let rightArmZ = runner ? -0.12 : -0.13
-    let leftElbowX = runner ? -0.42 : -0.12
-    let rightElbowX = runner ? -0.55 : -0.18
+    let leftArmX = runner ? -0.3 : 0.18
+    let rightArmX = runner ? -0.44 : -0.24
+    let leftArmZ = runner ? 0.23 : 0.15
+    let rightArmZ = runner ? -0.2 : -0.13
+    let leftElbowX = runner ? -0.68 : -0.14
+    let rightElbowX = runner ? -0.74 : -0.22
     let leftLegX = 0
     let rightLegX = 0
-    let leftKneeX = 0.06
-    let rightKneeX = 0.06
+    let leftKneeX = runner ? 0.12 : 0.07
+    let rightKneeX = runner ? 0.15 : 0.07
     let leftFootX = 0
     let rightFootX = 0
-    let torsoX = runner ? 0.32 : 0.2
+    let torsoX = runner ? 0.46 : 0.24
     let torsoY = 0
     let torsoZ = Math.sin(time * (runner ? 2.7 : 1.7)) * (runner ? 0.035 : 0.07)
-    let headX = runner ? -0.08 : 0.08
+    let headX = runner ? -0.16 : 0.1
     let headY = Math.sin(time * 0.68 + (runner ? 1 : 0)) * 0.09
     let headZ = -torsoZ * 0.45
     let rootY = Math.sin(time * 2 + (runner ? 1 : 0)) * 0.018
     let rootX = 0
     let rootZ = 0
+    let attackTell = 0
+    let jawDrop = runner ? 0.018 : 0
+    let jawOpen = runner ? -0.08 : 0
 
     if (state === 'PATROL') {
       const rate = runner ? 4.8 : 3.15
@@ -326,25 +359,28 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
       const leg = phase * (runner ? 0.28 : 0.22)
       leftLegX = leg
       rightLegX = -leg
-      leftKneeX = Math.max(0, -phase) * 0.3 + 0.06
-      rightKneeX = Math.max(0, phase) * 0.3 + 0.06
+      leftKneeX = Math.max(0, -phase) * 0.3 + (runner ? 0.12 : 0.07)
+      rightKneeX = Math.max(0, phase) * 0.3 + (runner ? 0.15 : 0.07)
       leftFootX = -leftLegX * 0.25 - leftKneeX * 0.42
       rightFootX = -rightLegX * 0.25 - rightKneeX * 0.42
-      leftArmX = -leg * 0.56 + 0.24
-      rightArmX = leg * 0.52 - 0.18
+      leftArmX = -leg * 0.56 + (runner ? -0.3 : 0.18)
+      rightArmX = leg * 0.52 + (runner ? -0.44 : -0.24)
       rootY = Math.abs(phase) * 0.018
     } else if (state === 'DETECT') {
       const progress = Math.min(1, stateTime.current / timing.detectDuration)
       const reaction = Math.sin(progress * Math.PI)
       rootY = reaction * (runner ? 0.07 : 0.045)
-      torsoX = (runner ? 0.32 : 0.2) - reaction * (runner ? 0.42 : 0.3)
+      torsoX = (runner ? 0.46 : 0.24) - reaction * (runner ? 0.48 : 0.34)
       torsoY = reaction * (runner ? -0.16 : 0.11)
-      leftArmX = (runner ? 0.38 : 0.24) - reaction * 0.72
-      rightArmX = (runner ? -0.12 : -0.2) - reaction * 0.68
+      leftArmX = (runner ? -0.3 : 0.18) - reaction * (runner ? 0.86 : 0.72)
+      rightArmX = (runner ? -0.44 : -0.24) - reaction * (runner ? 0.92 : 0.68)
       leftElbowX -= reaction * 0.3
       rightElbowX -= reaction * 0.34
-      headX = (runner ? -0.08 : 0.08) - reaction * 0.26
+      headX = (runner ? -0.16 : 0.1) - reaction * 0.26
       headY *= 1 - progress
+      attackTell = reaction * (runner ? 0.85 : 0.48)
+      jawDrop += reaction * (runner ? 0.045 : 0.025)
+      jawOpen -= reaction * (runner ? 0.16 : 0.09)
     } else if (state === 'CHASE') {
       const rate = runner ? 11.4 : 5.25
       const stride = runner ? 0.76 : 0.48
@@ -352,21 +388,21 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
       const leg = phase * stride
       leftLegX = leg
       rightLegX = -leg
-      leftKneeX = Math.max(0, -phase) * (runner ? 0.92 : 0.52) + 0.06
-      rightKneeX = Math.max(0, phase) * (runner ? 0.92 : 0.52) + 0.06
+      leftKneeX = Math.max(0, -phase) * (runner ? 0.92 : 0.52) + (runner ? 0.12 : 0.07)
+      rightKneeX = Math.max(0, phase) * (runner ? 0.92 : 0.52) + (runner ? 0.15 : 0.07)
       leftFootX = -leftLegX * 0.2 - leftKneeX * 0.55
       rightFootX = -rightLegX * 0.2 - rightKneeX * 0.55
       if (runner) {
-        leftArmX = -leg * 0.64 + 0.2
-        rightArmX = leg * 0.64 - 0.22
+        leftArmX = -leg * 0.64 - 0.28
+        rightArmX = leg * 0.64 - 0.42
         leftElbowX = -0.62
         rightElbowX = -0.7
-        torsoX = 0.5
+        torsoX = 0.62
         torsoY = -phase * 0.1
-        headX = -0.13
+        headX = -0.2
       } else {
-        leftArmX = -leg * 0.92 + 0.3
-        rightArmX = leg * 0.84 - 0.18
+        leftArmX = -leg * 0.92 + 0.22
+        rightArmX = leg * 0.84 - 0.24
         leftElbowX = -0.08 + Math.max(0, phase) * 0.2
         rightElbowX = -0.14 + Math.max(0, -phase) * 0.2
         torsoX = 0.24
@@ -378,15 +414,28 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
       const progress = Math.min(1, stateTime.current / timing.attackDuration)
       const windupEnd = timing.activeStart / timing.attackDuration
       const strikeEnd = timing.activeEnd / timing.attackDuration
+      const telegraphProgress = Math.min(1, progress / windupEnd)
+      const recoveryProgress = progress <= strikeEnd ? 0 : (progress - strikeEnd) / (1 - strikeEnd)
+      attackTell = progress <= windupEnd
+        ? 0.35 + ease(telegraphProgress) * (runner ? 1.65 : 1.15)
+        : (1 - ease(recoveryProgress)) * (runner ? 1.55 : 1.05)
+      jawDrop += attackTell * (runner ? 0.038 : 0.026)
+      jawOpen -= attackTell * (runner ? 0.13 : 0.09)
       if (runner) {
-        leftArmX = stagedValue(progress, 0.38, 0.95, -0.5, windupEnd, strikeEnd)
-        rightArmX = stagedValue(progress, -0.12, 1.05, -0.62, windupEnd, strikeEnd)
-        leftArmZ = stagedValue(progress, 0.18, 0.36, 0.5, windupEnd, strikeEnd)
+        leftArmX = stagedValue(progress, -0.3, 1.08, -0.72, windupEnd, strikeEnd)
+        rightArmX = stagedValue(progress, -0.44, 1.18, -0.8, windupEnd, strikeEnd)
+        leftArmZ = stagedValue(progress, 0.23, 0.5, 0.58, windupEnd, strikeEnd)
         rightArmZ = -leftArmZ
-        leftElbowX = stagedValue(progress, -0.42, -0.18, -0.62, windupEnd, strikeEnd)
-        rightElbowX = stagedValue(progress, -0.55, -0.22, -0.7, windupEnd, strikeEnd)
-        torsoX = stagedValue(progress, 0.32, -0.28, 0.7, windupEnd, strikeEnd)
-        headX = stagedValue(progress, -0.08, 0.1, -0.2, windupEnd, strikeEnd)
+        leftElbowX = stagedValue(progress, -0.68, -0.12, -0.78, windupEnd, strikeEnd)
+        rightElbowX = stagedValue(progress, -0.74, -0.16, -0.86, windupEnd, strikeEnd)
+        torsoX = stagedValue(progress, 0.46, -0.36, 0.82, windupEnd, strikeEnd)
+        torsoY = stagedValue(progress, 0, -0.2, 0.12, windupEnd, strikeEnd)
+        headX = stagedValue(progress, -0.16, 0.16, -0.28, windupEnd, strikeEnd)
+        rootY = progress <= windupEnd ? -Math.sin(telegraphProgress * Math.PI * 0.5) * 0.075 : rootY
+        leftLegX = progress <= windupEnd ? -0.24 * telegraphProgress : leftLegX
+        rightLegX = progress <= windupEnd ? 0.28 * telegraphProgress : rightLegX
+        leftKneeX = 0.12 + telegraphProgress * 0.46
+        rightKneeX = 0.15 + telegraphProgress * 0.5
         if (progress > windupEnd && progress < strikeEnd) {
           const phase = Math.sin(time * 15)
           leftLegX = phase * 0.82
@@ -396,23 +445,28 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
           rootY = Math.abs(phase) * 0.06
         }
       } else {
-        rightArmX = stagedValue(progress, -0.2, -1.9, 0.88, windupEnd, strikeEnd)
-        rightArmZ = stagedValue(progress, -0.13, -0.32, -0.48, windupEnd, strikeEnd)
-        rightElbowX = stagedValue(progress, -0.18, -0.58, 0.25, windupEnd, strikeEnd)
-        leftArmX = stagedValue(progress, 0.24, -0.9, 0.65, windupEnd, strikeEnd)
-        leftArmZ = stagedValue(progress, 0.13, 0.46, 0.25, windupEnd, strikeEnd)
-        leftElbowX = stagedValue(progress, -0.12, -0.5, 0.12, windupEnd, strikeEnd)
-        torsoX = stagedValue(progress, 0.2, -0.15, 0.5, windupEnd, strikeEnd)
-        torsoY = stagedValue(progress, 0, -0.22, 0.3, windupEnd, strikeEnd)
-        headX = stagedValue(progress, 0.08, -0.12, 0.2, windupEnd, strikeEnd)
+        rightArmX = stagedValue(progress, -0.24, -2.12, 0.96, windupEnd, strikeEnd)
+        rightArmZ = stagedValue(progress, -0.13, -0.42, -0.54, windupEnd, strikeEnd)
+        rightElbowX = stagedValue(progress, -0.22, -0.72, 0.3, windupEnd, strikeEnd)
+        leftArmX = stagedValue(progress, 0.18, -1.2, 0.74, windupEnd, strikeEnd)
+        leftArmZ = stagedValue(progress, 0.15, 0.58, 0.3, windupEnd, strikeEnd)
+        leftElbowX = stagedValue(progress, -0.14, -0.64, 0.18, windupEnd, strikeEnd)
+        torsoX = stagedValue(progress, 0.24, -0.24, 0.58, windupEnd, strikeEnd)
+        torsoY = stagedValue(progress, 0, -0.3, 0.36, windupEnd, strikeEnd)
+        torsoZ += Math.sin(telegraphProgress * Math.PI) * 0.12
+        headX = stagedValue(progress, 0.1, -0.18, 0.24, windupEnd, strikeEnd)
+        rootY = progress <= windupEnd ? -Math.sin(telegraphProgress * Math.PI * 0.5) * 0.045 : rootY
+        rootZ = progress <= windupEnd ? -Math.sin(telegraphProgress * Math.PI) * 0.055 : rootZ
+        leftKneeX = 0.07 + telegraphProgress * 0.28
+        rightKneeX = 0.07 + telegraphProgress * 0.18
       }
     } else if (state === 'RECOVER') {
       const fatigue = 1 - ease(Math.min(1, stateTime.current / recoveryDuration.current))
-      torsoX = (runner ? 0.32 : 0.2) + fatigue * (runner ? 0.62 : 0.34)
+      torsoX = (runner ? 0.46 : 0.24) + fatigue * (runner ? 0.62 : 0.34)
       torsoY = fatigue * (runner ? 0.18 : -0.1)
-      headX = (runner ? -0.08 : 0.08) + fatigue * 0.34
-      leftArmX = (runner ? 0.38 : 0.24) + fatigue * 0.58
-      rightArmX = (runner ? -0.12 : -0.2) + fatigue * 0.52
+      headX = (runner ? -0.16 : 0.1) + fatigue * 0.34
+      leftArmX = (runner ? -0.3 : 0.18) + fatigue * 0.58
+      rightArmX = (runner ? -0.44 : -0.24) + fatigue * 0.52
       leftElbowX = -0.08 + fatigue * 0.28
       rightElbowX = -0.12 + fatigue * 0.24
       rootY = -fatigue * 0.025
@@ -459,6 +513,19 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
       head.current.rotation.y = damp(head.current.rotation.y, headY, delta, 9)
       head.current.rotation.z = damp(head.current.rotation.z, headZ, delta, 10)
     }
+    if (jaw.current) {
+      jaw.current.position.y = damp(jaw.current.position.y, (runner ? -0.235 : -0.2) - jawDrop, delta, 16)
+      jaw.current.rotation.x = damp(jaw.current.rotation.x, (runner ? -0.08 : 0) + jawOpen, delta, 16)
+    }
+    if (mouth.current) {
+      const baseMouthScale = runner ? 0.155 : 0.09
+      mouth.current.scale.y = damp(
+        mouth.current.scale.y,
+        baseMouthScale * (1 + Math.min(1.8, attackTell) * (runner ? 0.58 : 0.42)),
+        delta,
+        18
+      )
+    }
     if (leftArm.current) {
       leftArm.current.rotation.x = damp(leftArm.current.rotation.x, leftArmX, delta, 14)
       leftArm.current.rotation.z = damp(leftArm.current.rotation.z, leftArmZ, delta, 14)
@@ -477,25 +544,27 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
     if (rightFoot.current) rightFoot.current.rotation.x = damp(rightFoot.current.rotation.x, rightFootX, delta, 14)
     materials.skin.emissiveIntensity = flash ? 1.35 : 0
     materials.shirt.emissiveIntensity = flash ? 0.9 : 0
+    materials.eye.emissiveIntensity = (runner ? 0.22 : 0.16) + attackTell * (runner ? 1.45 : 0.85)
+    materials.attackTell.emissiveIntensity = attackTell * (runner ? 2.1 : 1.35)
   })
 
   const runner = kind === 'runner'
-  const scale: [number, number, number] = runner ? [0.91, 1.03, 0.9] : [1, 1, 1]
-  const torsoZ = runner ? 0.3 : 0.326
+  const scale: [number, number, number] = runner ? [0.84, 1.08, 0.86] : [1.04, 0.99, 1.02]
+  const torsoZ = runner ? 0.285 : 0.34
   const shoeAccents = [materials.green, materials.purple, materials.cyan] as const
   return (
     <group ref={root} scale={scale} dispose={null}>
-      <group ref={torso} position={[(variant - 1) * 0.012, 1.48, 0]}>
+      <group ref={torso} position={[(variant - 1) * 0.016, runner ? 1.51 : 1.47, runner ? 0.045 : 0]}>
         <mesh
           geometry={UNDERSHIRT_GEOMETRY}
           position={[0, -0.025, 0]}
-          scale={[runner ? 0.75 : 0.84, 0.98, runner ? 0.56 : 0.6]}
+          scale={[runner ? 0.68 : 0.88, runner ? 1.02 : 0.98, runner ? 0.52 : 0.63]}
           material={materials.undershirt}
           castShadow
         />
         <mesh
           geometry={TORSO_GEOMETRY}
-          scale={[runner ? 0.77 : 0.88, 1, runner ? 0.58 : 0.63]}
+          scale={[runner ? 0.7 : 0.93, runner ? 1.04 : 1, runner ? 0.54 : 0.66]}
           material={materials.shirt}
           castShadow
         />
@@ -503,7 +572,7 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
           geometry={SHOULDER_GEOMETRY}
           position={[0, 0.35, 0]}
           rotation={[0, 0, Math.PI / 2]}
-          scale={[0.83, runner ? 0.86 : 1, runner ? 0.54 : 0.62]}
+          scale={[runner ? 0.76 : 0.86, runner ? 0.82 : 1.08, runner ? 0.5 : 0.65]}
           material={materials.shirtHem}
           castShadow
         />
@@ -538,8 +607,8 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
         ))}
         <mesh geometry={PATCH_GEOMETRY} position={[0.31, -0.16, torsoZ + 0.012]} rotation={[0, 0, -0.3]} scale={[0.08, 0.17, 1]} material={materials.wound} />
 
-        <group ref={leftArm} position={[-(runner ? 0.44 : 0.5), 0.29, 0]}>
-          <mesh geometry={SLEEVE_GEOMETRY} position={[0, -0.17, 0]} material={materials.shirtHem} castShadow />
+        <group ref={leftArm} position={[-(runner ? 0.43 : 0.54), runner ? 0.3 : 0.31, 0]}>
+          <mesh geometry={SLEEVE_GEOMETRY} position={[0, -0.17, 0]} scale={runner ? [0.82, 0.9, 0.82] : [1.05, 1, 1.05]} material={materials.shirtHem} castShadow />
           {[-0.09, 0, 0.09].map((y, index) => (
             <mesh
               key={y}
@@ -552,31 +621,32 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
           ))}
           <group ref={leftForearm} position={[0, -0.34, 0]} rotation={[0.05, 0, 0]}>
             <mesh geometry={JOINT_GEOMETRY} scale={[0.19, 0.18, 0.2]} material={materials.skinDark} />
-            <mesh geometry={LIMB_GEOMETRY} position={[0, -0.29, 0]} scale={[0.3, runner ? 0.62 : 0.59, 0.33]} material={materials.skin} castShadow />
+            <mesh geometry={LIMB_GEOMETRY} position={[0, runner ? -0.32 : -0.29, 0]} scale={[runner ? 0.27 : 0.32, runner ? 0.7 : 0.61, runner ? 0.3 : 0.35]} material={materials.skin} castShadow />
             <mesh geometry={PATCH_GEOMETRY} position={[-0.105, -0.25, 0.075]} rotation={[0, -1.05, 0.2]} scale={[0.06, 0.16, 1]} material={materials.wound} />
-            <group position={[0, -0.62, 0.02]}>
+            <group position={[0, runner ? -0.68 : -0.62, 0.02]}>
               <ZombieHand material={materials.skinDark} mirror />
             </group>
           </group>
         </group>
 
-        <group ref={rightArm} position={[runner ? 0.44 : 0.5, 0.29, 0]}>
-          <mesh geometry={SLEEVE_GEOMETRY} position={[0, -0.17, 0]} material={materials.shirtHem} castShadow />
+        <group ref={rightArm} position={[runner ? 0.43 : 0.54, runner ? 0.27 : 0.29, 0]}>
+          <mesh geometry={SLEEVE_GEOMETRY} position={[0, -0.17, 0]} scale={runner ? [0.78, 0.86, 0.78] : [1.04, 1, 1.04]} material={materials.shirtHem} castShadow />
           <group ref={rightForearm} position={[0, -0.34, 0]} rotation={[-0.06, 0, 0]}>
             <mesh geometry={JOINT_GEOMETRY} scale={[0.19, 0.18, 0.2]} material={materials.skinDark} />
-            <mesh geometry={LIMB_GEOMETRY} position={[0, -0.3, 0]} scale={[0.3, runner ? 0.65 : 0.61, 0.33]} material={materials.skin} castShadow />
+            <mesh geometry={LIMB_GEOMETRY} position={[0, runner ? -0.34 : -0.3, 0]} scale={[runner ? 0.26 : 0.32, runner ? 0.74 : 0.63, runner ? 0.29 : 0.35]} material={materials.skin} castShadow />
             <mesh geometry={PATCH_GEOMETRY} position={[0.105, -0.18, 0.06]} rotation={[0, 1.05, -0.15]} scale={[0.07, 0.13, 1]} material={materials.wound} />
-            <group position={[0, -0.64, 0.02]}>
+            <group position={[0, runner ? -0.72 : -0.64, 0.02]}>
               <ZombieHand material={materials.skinDark} />
             </group>
           </group>
         </group>
       </group>
 
-      <mesh geometry={LIMB_GEOMETRY} position={[0, 2.06, runner ? 0.04 : 0]} scale={[0.22, 0.3, 0.22]} material={materials.skinDark} />
-      <group ref={head} position={[(variant - 1) * 0.012, 2.31, runner ? 0.09 : 0.025]}>
-        <mesh geometry={HEAD_GEOMETRY} scale={[runner ? 0.56 : 0.6, runner ? 0.77 : 0.74, 0.58]} material={materials.skin} castShadow />
+      <mesh geometry={LIMB_GEOMETRY} position={[0, runner ? 2.09 : 2.04, runner ? 0.08 : 0]} scale={[runner ? 0.19 : 0.23, runner ? 0.34 : 0.29, runner ? 0.19 : 0.23]} material={materials.skinDark} />
+      <group ref={head} position={[(variant - 1) * 0.012, runner ? 2.36 : 2.29, runner ? 0.13 : 0.035]}>
+        <mesh geometry={HEAD_GEOMETRY} scale={[runner ? 0.53 : 0.61, runner ? 0.8 : 0.74, runner ? 0.55 : 0.59]} material={materials.skin} castShadow />
         <mesh
+          ref={jaw}
           geometry={JAW_GEOMETRY}
           position={[(variant - 1) * 0.018, runner ? -0.235 : -0.2, runner ? 0.065 : 0.035]}
           rotation={[runner ? -0.08 : 0, 0, (variant - 1) * 0.055]}
@@ -601,11 +671,12 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
           </group>
         ))}
         <mesh
+          ref={mouth}
           geometry={PATCH_GEOMETRY}
           position={[(variant - 1) * 0.016, runner ? -0.245 : -0.205, 0.285]}
           rotation={[0, 0, (variant - 1) * 0.08]}
           scale={[runner ? 0.2 : 0.18, runner ? 0.155 : 0.09, 1]}
-          material={materials.mouth}
+          material={materials.attackTell}
         />
         {[-0.07, 0, 0.07].map((x, index) => (
           <mesh
@@ -650,8 +721,8 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
         />
       ))}
 
-      <group ref={leftLeg} position={[-0.2, 1.04, 0.01]}>
-        <mesh geometry={LIMB_GEOMETRY} position={[0, -0.24, 0]} scale={[runner ? 0.42 : 0.48, 0.49, runner ? 0.46 : 0.52]} material={materials.trousers} castShadow />
+      <group ref={leftLeg} position={[-(runner ? 0.18 : 0.22), runner ? 1.07 : 1.03, runner ? 0.035 : 0.01]} rotation={[0, 0, runner ? 0.025 : -0.018]}>
+        <mesh geometry={LIMB_GEOMETRY} position={[0, -0.24, 0]} scale={[runner ? 0.38 : 0.5, runner ? 0.52 : 0.49, runner ? 0.42 : 0.54]} material={materials.trousers} castShadow />
         <mesh geometry={LINE_GEOMETRY} position={[-0.15, -0.24, 0.02]} scale={[0.28, 0.62, 0.28]} material={materials.trousersWear} />
         <group ref={leftShin} position={[0, -0.49, 0]}>
           <mesh geometry={JOINT_GEOMETRY} scale={[0.23, 0.2, 0.25]} material={materials.skinDark} />
@@ -666,7 +737,7 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
               material={materials.trousersWear}
             />
           ))}
-          <mesh geometry={LIMB_GEOMETRY} position={[0, -0.22, 0]} scale={[runner ? 0.39 : 0.43, 0.44, runner ? 0.45 : 0.49]} material={materials.trousers} castShadow />
+          <mesh geometry={LIMB_GEOMETRY} position={[0, -0.22, 0]} scale={[runner ? 0.35 : 0.45, runner ? 0.48 : 0.44, runner ? 0.4 : 0.51]} material={materials.trousers} castShadow />
           <mesh geometry={PATCH_GEOMETRY} position={[-0.12, -0.19, 0.12]} rotation={[0, -0.75, 0.15]} scale={[0.07, 0.15, 1]} material={materials.trousersWear} />
           <group ref={leftFoot} position={[0, -0.45, 0.1]} rotation={[0, -0.04, 0.02]}>
             <mesh geometry={SHOE_GEOMETRY} position={[0, 0.02, 0.07]} material={materials.shoe} castShadow />
@@ -690,8 +761,8 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
         </group>
       </group>
 
-      <group ref={rightLeg} position={[0.2, 1.04, -0.015]} rotation={[0, 0, runner ? -0.035 : 0.025]}>
-        <mesh geometry={LIMB_GEOMETRY} position={[0, -0.24, 0]} scale={[runner ? 0.42 : 0.48, 0.49, runner ? 0.46 : 0.52]} material={materials.trousers} castShadow />
+      <group ref={rightLeg} position={[runner ? 0.18 : 0.22, runner ? 1.07 : 1.03, runner ? -0.025 : -0.015]} rotation={[0, 0, runner ? -0.055 : 0.035]}>
+        <mesh geometry={LIMB_GEOMETRY} position={[0, -0.24, 0]} scale={[runner ? 0.38 : 0.5, runner ? 0.52 : 0.49, runner ? 0.42 : 0.54]} material={materials.trousers} castShadow />
         <mesh geometry={LINE_GEOMETRY} position={[0.15, -0.24, 0.02]} scale={[0.28, 0.62, 0.28]} material={materials.trousersWear} />
         <group ref={rightShin} position={[0, -0.49, 0]}>
           <mesh geometry={JOINT_GEOMETRY} scale={[0.23, 0.2, 0.25]} material={materials.skinDark} />
@@ -706,7 +777,7 @@ function EnemyModel({ kind, variantSeed, state, stateTime, recoveryDuration, fla
               material={materials.trousersWear}
             />
           ))}
-          <mesh geometry={LIMB_GEOMETRY} position={[0, -0.22, 0]} scale={[runner ? 0.39 : 0.43, 0.44, runner ? 0.45 : 0.49]} material={materials.trousers} castShadow />
+          <mesh geometry={LIMB_GEOMETRY} position={[0, -0.22, 0]} scale={[runner ? 0.35 : 0.45, runner ? 0.48 : 0.44, runner ? 0.4 : 0.51]} material={materials.trousers} castShadow />
           <mesh geometry={PATCH_GEOMETRY} position={[0.12, -0.13, 0.1]} rotation={[0, 0.75, -0.2]} scale={[0.075, 0.12, 1]} material={materials.trousersWear} />
           <group ref={rightFoot} position={[0, -0.45, 0.1]} rotation={[0, 0.06, -0.02]}>
             <mesh geometry={SHOE_GEOMETRY} position={[0, 0.02, 0.07]} material={materials.shoe} castShadow />
@@ -822,6 +893,7 @@ export function Enemy({ id, kind, spawn, active, playerPosition, extraColliders,
     }
     if (!active || status !== 'PLAYING' || combat.isFrozen()) return
     const timing = ENEMY_TIMINGS[kind]
+    const bodyRadius = kind === 'runner' ? 0.48 : 0.54
     stateTime.current += delta
     attackCooldown.current = Math.max(0, attackCooldown.current - delta)
 
@@ -865,7 +937,7 @@ export function Enemy({ id, kind, spawn, active, playerPosition, extraColliders,
           patrolTurn.current * delta * (kind === 'runner' ? 0.42 : 0.28)
         )
       }
-      const separation = separationForce(id, position.current, combat.targets.current.values())
+      const separation = separationForce(id, position.current, combat.targets.current.values(), bodyRadius)
       const movement = patrolDirection.current.clone().addScaledVector(separation, 0.58).normalize()
       const desired = position.current.clone().addScaledVector(
         movement,
@@ -884,11 +956,20 @@ export function Enemy({ id, kind, spawn, active, playerPosition, extraColliders,
     } else if (stateRef.current === 'DETECT') {
       if (canSee) facing.current = faceDirection(facing.current, direction, delta, kind === 'runner' ? 15 : 10)
     } else if (stateRef.current === 'CHASE') {
-      const separation = separationForce(id, position.current, combat.targets.current.values())
-      const movement = direction.clone().add(separation).normalize()
-      const desired = position.current.clone().addScaledVector(movement, GAME_CONFIG.enemies[kind].speed * delta)
-      position.current.copy(resolveWorldMovement(position.current, desired, 0.5, extraColliders))
-      facing.current = faceDirection(facing.current, movement, delta, kind === 'runner' ? 13 : 7)
+      const separation = separationForce(id, position.current, combat.targets.current.values(), bodyRadius)
+      const preferredRange = kind === 'runner' ? 1.08 : 1.24
+      const approachWeight = THREE.MathUtils.clamp((distance - preferredRange) / 0.82, 0, 1)
+      const movement = direction.clone().multiplyScalar(approachWeight)
+        .addScaledVector(separation, kind === 'runner' ? 0.82 : 1.08)
+      if (movement.lengthSq() > 0.0001) {
+        movement.normalize()
+        const desired = position.current.clone().addScaledVector(
+          movement,
+          GAME_CONFIG.enemies[kind].speed * delta * (0.62 + approachWeight * 0.38)
+        )
+        position.current.copy(resolveWorldMovement(position.current, desired, bodyRadius, extraColliders))
+      }
+      facing.current = faceDirection(facing.current, direction, delta, kind === 'runner' ? 13 : 7)
     } else if (stateRef.current === 'ATTACK') {
       const inActiveWindow = stateTime.current >= timing.activeStart && stateTime.current <= timing.activeEnd
       if (inActiveWindow && !attackWindowStarted.current) {
@@ -910,7 +991,9 @@ export function Enemy({ id, kind, spawn, active, playerPosition, extraColliders,
         if (stateTime.current < timing.activeStart) {
           facing.current = faceDirection(facing.current, chargeDirection.current, delta, 12)
         } else if (inActiveWindow) {
-          const desired = position.current.clone().addScaledVector(chargeDirection.current, 8.2 * delta)
+          const separation = separationForce(id, position.current, combat.targets.current.values(), bodyRadius)
+          const chargeMovement = chargeDirection.current.clone().addScaledVector(separation, 0.62).normalize()
+          const desired = position.current.clone().addScaledVector(chargeMovement, 8.2 * delta)
           position.current.copy(resolveWorldMovement(position.current, desired, 0.48, extraColliders))
           const clearChargeHit = hasLineOfSight(
             position.current.clone().add(new THREE.Vector3(0, 1, 0)),
@@ -926,12 +1009,33 @@ export function Enemy({ id, kind, spawn, active, playerPosition, extraColliders,
       }
     }
 
+    const playerCorrection = personalSpaceCorrection(
+      position.current,
+      playerPosition.current,
+      kind === 'runner' ? 0.94 : 1.02,
+      patrolSeed
+    )
+    if (playerCorrection.lengthSq() > 0.000001) {
+      const desired = position.current.clone().addScaledVector(playerCorrection, Math.min(1, delta * 18))
+      position.current.copy(resolveWorldMovement(position.current, desired, bodyRadius, extraColliders))
+    }
+    const crowdCorrection = separationForce(
+      id,
+      position.current,
+      combat.targets.current.values(),
+      bodyRadius
+    )
+    if (crowdCorrection.lengthSq() > 0.000001) {
+      const desired = position.current.clone().addScaledVector(crowdCorrection, Math.min(0.24, delta * 3.8))
+      position.current.copy(resolveWorldMovement(position.current, desired, bodyRadius, extraColliders))
+    }
+
     mesh.position.copy(position.current)
     mesh.rotation.y = facing.current
   })
 
   return (
-    <group ref={group} position={spawn}>
+    <group ref={group} name={`paper-hand-${kind}-${id}`} position={spawn}>
       <EnemyModel
         kind={kind}
         variantSeed={patrolSeed}

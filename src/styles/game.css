@@ -1132,6 +1132,7 @@
 }
 
 .game-overlay--victory {
+  overflow: hidden;
   background:
     radial-gradient(circle at 50% 55%, rgba(45, 106, 53, 0.27), transparent 48%),
     rgba(5, 8, 6, 0.8);
@@ -1139,10 +1140,14 @@
 
 .game-victory-rays {
   position: fixed;
-  inset: -50%;
+  top: 50%;
+  left: 50%;
+  width: 150vmax;
+  height: 150vmax;
   opacity: 0.16;
   pointer-events: none;
   background: conic-gradient(from 0deg at center, transparent 0 8deg, rgba(125, 255, 72, 0.3) 8deg 10deg, transparent 10deg 25deg);
+  transform: translate(-50%, -50%);
   animation: game-victory-rays 38s linear infinite;
 }
 
@@ -1570,7 +1575,8 @@
 }
 
 @keyframes game-victory-rays {
-  to { transform: rotate(360deg); }
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
 }
 
 @media (max-width: 980px) {
@@ -1653,6 +1659,8 @@
   .game-overlay { align-items: start; padding: 24px; }
   .game-overlay__panel { margin: auto; padding: 42px 30px; }
   .game-overlay__panel--victory { margin: auto; }
+  .game-overlay--victory { overflow-x: hidden; overflow-y: auto; }
+  .game-overlay--victory .game-victory-rays { display: none; }
   .game-victory-layout { grid-template-columns: 1fr; gap: 16px; }
   .game-final-rank { min-height: 150px; }
   .game-final-rank strong { font-size: 78px; }
@@ -1699,6 +1707,8 @@
 }
 
 @media (max-height: 720px) and (min-width: 721px) {
+  .game-page { min-height: 0; }
+  .game-overlay { align-items: start; padding-top: 20px; padding-bottom: 20px; }
   .game-menu-frame { justify-content: flex-start; overflow-y: auto; padding-top: 30px; padding-bottom: 42px; }
   .game-menu-brand { margin-bottom: 19px; }
   .game-menu-brand h1 { font-size: 58px; }
@@ -1713,6 +1723,8 @@
   .game-controls-notes { margin: 15px 0; }
 
   .game-overlay__panel--victory { margin: auto; padding-top: 21px; padding-bottom: 23px; }
+  .game-overlay--victory { overflow-x: hidden; overflow-y: auto; }
+  .game-overlay--victory .game-victory-rays { display: none; }
   .game-overlay__panel--victory > .game-wick-mark { display: none; }
   .game-overlay__panel--victory h1 { font-size: 53px; }
   .game-victory-subtitle { margin-bottom: 14px !important; }

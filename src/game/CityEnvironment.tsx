@@ -68,6 +68,34 @@ const ROAD_SCARS = Array.from({ length: 38 }, (_, index) => ({
   width: 0.022 + (index % 3) * 0.012
 }))
 
+const UTILITY_POLES = [
+  { x: -7.72, z: 20.5, side: -1 }, { x: -7.7, z: 1.5, side: -1 },
+  { x: 7.68, z: 11.5, side: 1 }, { x: 7.72, z: -8.5, side: 1 },
+  { x: -11.72, z: -25, side: -1 }, { x: -11.7, z: -47.5, side: -1 },
+  { x: 11.68, z: -35, side: 1 }, { x: 11.7, z: -57, side: 1 }
+]
+
+const ROUTE_TRASH = Array.from({ length: 30 }, (_, index) => {
+  const pump = index >= 14
+  const side = index % 2 ? 1 : -1
+  return {
+    x: side * (pump ? 9.6 + (index % 4) * 0.54 : 6.6 + (index % 3) * 0.42),
+    z: pump ? -22 - ((index * 8.3) % 43) : 23 - ((index * 7.7) % 40),
+    scale: 0.24 + (index % 4) * 0.055,
+    rotation: index * 0.87
+  }
+})
+
+const ROUTE_DRUMS = [
+  [-7.15, 16.8, 0.08], [7.05, 3.4, -0.12], [-7.3, -13.2, 0.24],
+  [10.7, -25.2, -0.08], [-10.2, -48.8, 0.17], [10.35, -58.5, -0.2]
+] as const
+
+const ROUTE_DRAINS = [
+  [-8.14, 18], [8.14, 9], [-8.14, -1], [8.14, -11],
+  [-12.58, -26], [12.58, -37], [-12.58, -49], [12.58, -60]
+] as const
+
 function useSurfaceNoise() {
   const texture = useMemo(() => {
     const canvas = document.createElement('canvas')
@@ -458,7 +486,7 @@ function WetStreet({ surfaceMap }: { surfaceMap: THREE.Texture }) {
       {segments.map(([z, width, depth], index) => (
         <mesh key={z} position={[0, -0.17, z]} receiveShadow>
           <boxGeometry args={[width, 0.32, depth]} />
-          <meshStandardMaterial color={index % 2 ? '#29302d' : '#272e2a'} roughness={0.5 + index * 0.025} roughnessMap={surfaceMap} bumpMap={surfaceMap} bumpScale={0.052} metalness={0.09} flatShading />
+          <meshStandardMaterial color={index % 2 ? '#29302d' : '#272e2a'} roughness={0.86 + index * 0.02} roughnessMap={surfaceMap} bumpMap={surfaceMap} bumpScale={0.052} metalness={0.045} flatShading />
         </mesh>
       ))}
       {sidewalks.flatMap(([z, halfWidth, depth], segment) => [-1, 1].map((side) => (
@@ -573,6 +601,190 @@ function RustContainer({ position, rotation = 0, color = '#4b3830' }: { position
         <boxGeometry args={[0.11, 1.25, 0.06]} />
         <meshStandardMaterial color="#86563b" roughness={0.86} metalness={0.4} />
       </mesh>
+    </group>
+  )
+}
+
+interface RoutePropKit {
+  mass: THREE.DodecahedronGeometry
+  detail: THREE.DodecahedronGeometry
+  bar: THREE.BoxGeometry
+  wheel: THREE.CylinderGeometry
+  body: THREE.MeshStandardMaterial
+  rust: THREE.MeshStandardMaterial
+  glass: THREE.MeshStandardMaterial
+  tire: THREE.MeshStandardMaterial
+  metal: THREE.MeshStandardMaterial
+  trim: THREE.MeshStandardMaterial
+}
+
+function createRoutePropKit(): RoutePropKit {
+  const standard = (color: string, roughness: number, metalness = 0) => new THREE.MeshStandardMaterial({
+    color,
+    roughness,
+    metalness,
+    flatShading: true
+  })
+  return {
+    mass: new THREE.DodecahedronGeometry(1, 1),
+    detail: new THREE.DodecahedronGeometry(1, 0),
+    bar: new THREE.BoxGeometry(1, 1, 1),
+    wheel: new THREE.CylinderGeometry(1, 1, 1, 9),
+    body: standard('#343b36', 0.86, 0.2),
+    rust: standard('#6c4935', 0.96, 0.22),
+    glass: new THREE.MeshStandardMaterial({ color: '#101817', emissive: '#18332e', emissiveIntensity: 0.12, roughness: 0.3, metalness: 0.18, transparent: true, opacity: 0.82 }),
+    tire: standard('#101210', 0.98, 0.02),
+    metal: standard('#3f4540', 0.68, 0.58),
+    trim: new THREE.MeshStandardMaterial({ color: '#5e9d46', emissive: '#244d25', emissiveIntensity: 0.26, roughness: 0.78, metalness: 0.08 })
+  }
+}
+
+function AbandonedDeliveryVan({
+  kit,
+  position,
+  rotation
+}: {
+  kit: RoutePropKit
+  position: Vec3
+  rotation: number
+}) {
+  return (
+    <group position={position} rotation={[0, rotation, 0]}>
+      <mesh geometry={kit.mass} material={kit.body} position={[0, 0.55, 0]} scale={[1.12, 0.38, 1.88]} castShadow receiveShadow />
+      <mesh geometry={kit.mass} material={kit.body} position={[0, 1.12, -0.32]} scale={[1.02, 0.62, 1.04]} castShadow />
+      <mesh geometry={kit.mass} material={kit.body} position={[0, 0.75, 1.28]} scale={[1.04, 0.3, 0.72]} castShadow />
+      <mesh geometry={kit.bar} material={kit.glass} position={[0, 1.28, 0.69]} rotation={[-0.16, 0, 0]} scale={[1.65, 0.58, 0.055]} />
+      {[-1, 1].map((side) => (
+        <group key={side}>
+          <mesh geometry={kit.bar} material={kit.glass} position={[side * 0.94, 1.24, -0.24]} rotation={[0, side * -0.05, side * 0.025]} scale={[0.055, 0.58, 1.16]} />
+          <mesh geometry={kit.bar} material={kit.rust} position={[side * 1.02, 0.78, -0.38]} rotation={[0, side * 0.04, side * -0.035]} scale={[0.08, 0.64, 1.38]} castShadow />
+          {[-1.23, 1.2].map((z) => (
+            <mesh key={z} geometry={kit.wheel} material={kit.tire} position={[side * 1.02, 0.39, z]} rotation={[0, 0, Math.PI / 2]} scale={[0.38, 0.2, 0.38]} castShadow />
+          ))}
+        </group>
+      ))}
+      <mesh geometry={kit.bar} material={kit.metal} position={[0, 0.42, 1.91]} rotation={[0, 0.02, 0.04]} scale={[1.85, 0.13, 0.16]} />
+      <mesh geometry={kit.bar} material={kit.metal} position={[0.22, 0.5, -1.88]} rotation={[0, 0, -0.08]} scale={[1.65, 0.11, 0.12]} />
+      {[-0.72, 0.72].map((x) => (
+        <mesh key={x} geometry={kit.bar} material={kit.metal} position={[x, 1.78, -0.38]} scale={[0.08, 0.08, 1.84]} />
+      ))}
+      <mesh geometry={kit.bar} material={kit.metal} position={[0, 1.79, -1.16]} scale={[1.5, 0.08, 0.08]} />
+      <mesh geometry={kit.detail} material={kit.rust} position={[-0.58, 1.52, -0.86]} rotation={[0.2, 0.1, -0.18]} scale={[0.3, 0.08, 0.42]} />
+      <mesh geometry={kit.detail} material={kit.rust} position={[0.72, 0.88, 1.32]} rotation={[0.1, -0.2, 0.2]} scale={[0.26, 0.06, 0.34]} />
+      <mesh geometry={kit.bar} material={kit.trim} position={[0, 0.76, -1.86]} scale={[0.72, 0.08, 0.025]} />
+    </group>
+  )
+}
+
+function VentSteam({ quality, reducedMotion }: { quality: boolean; reducedMotion: boolean }) {
+  const count = quality ? 24 : 12
+  const mesh = useRef<THREE.InstancedMesh>(null)
+  const dummy = useMemo(() => new THREE.Object3D(), [])
+  const puffs = useMemo(() => Array.from({ length: count }, (_, index) => ({
+    vent: index % 3,
+    phase: (index * 0.73) % 1,
+    speed: 0.11 + (index % 4) * 0.018,
+    drift: (index % 2 ? 1 : -1) * (0.05 + (index % 3) * 0.02)
+  })), [count])
+  const vents = useMemo(() => [new THREE.Vector3(7.35, 0.08, 4), new THREE.Vector3(-9.35, 0.08, -27), new THREE.Vector3(9.7, 0.08, -54)], [])
+
+  useFrame(({ clock }) => {
+    if (!mesh.current) return
+    const time = reducedMotion ? 0.36 : clock.elapsedTime
+    puffs.forEach((puff, index) => {
+      const progress = (puff.phase + time * puff.speed) % 1
+      const origin = vents[puff.vent]
+      dummy.position.set(origin.x + puff.drift * progress * 3, origin.y + progress * 2.35, origin.z + Math.sin(index * 1.7 + time * 0.4) * 0.1)
+      const size = 0.16 + progress * 0.38
+      dummy.scale.set(size * 0.78, size, size * 0.78)
+      dummy.rotation.set(progress * 0.7, index * 0.8, 0)
+      dummy.updateMatrix()
+      mesh.current?.setMatrixAt(index, dummy.matrix)
+    })
+    mesh.current.instanceMatrix.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh ref={mesh} args={[undefined, undefined, count]} frustumCulled={false}>
+      <dodecahedronGeometry args={[1, 0]} />
+      <meshBasicMaterial color="#93a49d" transparent opacity={quality ? 0.065 : 0.045} depthWrite={false} />
+    </instancedMesh>
+  )
+}
+
+function RouteStreetDressing({ quality, reducedMotion }: { quality: boolean; reducedMotion: boolean }) {
+  const kit = useMemo(createRoutePropKit, [])
+  useEffect(() => () => {
+    kit.mass.dispose()
+    kit.detail.dispose()
+    kit.bar.dispose()
+    kit.wheel.dispose()
+    kit.body.dispose()
+    kit.rust.dispose()
+    kit.glass.dispose()
+    kit.tire.dispose()
+    kit.metal.dispose()
+    kit.trim.dispose()
+  }, [kit])
+
+  return (
+    <group>
+      <Instances limit={UTILITY_POLES.length} range={UTILITY_POLES.length}>
+        <cylinderGeometry args={[0.12, 0.17, 6.5, 7]} />
+        <meshStandardMaterial color="#3a342c" roughness={0.95} metalness={0.06} flatShading />
+        {UTILITY_POLES.map((pole, index) => <Instance key={index} position={[pole.x, 3.22, pole.z]} rotation={[0, 0, pole.side * 0.018]} />)}
+      </Instances>
+      <Instances limit={UTILITY_POLES.length} range={UTILITY_POLES.length}>
+        <boxGeometry args={[1.85, 0.12, 0.12]} />
+        <meshStandardMaterial color="#3d3d37" roughness={0.72} metalness={0.55} />
+        {UTILITY_POLES.map((pole, index) => <Instance key={index} position={[pole.x, 6.28, pole.z]} rotation={[0, index % 2 ? 0.08 : -0.06, pole.side * 0.025]} />)}
+      </Instances>
+      <Instances limit={UTILITY_POLES.length * 2} range={UTILITY_POLES.length * 2}>
+        <cylinderGeometry args={[0.07, 0.085, 0.22, 6]} />
+        <meshStandardMaterial color="#716b5c" roughness={0.48} metalness={0.22} />
+        {UTILITY_POLES.flatMap((pole, index) => [-0.68, 0.68].map((offset) => (
+          <Instance key={`${index}-${offset}`} position={[pole.x + offset, 6.43, pole.z]} />
+        )))}
+      </Instances>
+      <Instances limit={ROUTE_TRASH.length} range={ROUTE_TRASH.length}>
+        <dodecahedronGeometry args={[1, 1]} />
+        <meshStandardMaterial color="#171b18" roughness={0.93} flatShading />
+        {ROUTE_TRASH.map((bag, index) => (
+          <Instance key={index} position={[bag.x, bag.scale * 0.56, bag.z]} rotation={[0.08, bag.rotation, index % 2 ? 0.14 : -0.09]} scale={[bag.scale, bag.scale * 0.75, bag.scale * 0.9]} color={index % 8 === 0 ? '#26382f' : index % 11 === 0 ? '#352c38' : '#171b18'} />
+        ))}
+      </Instances>
+      <Instances limit={ROUTE_DRUMS.length} range={ROUTE_DRUMS.length}>
+        <cylinderGeometry args={[0.32, 0.35, 0.72, 10]} />
+        <meshStandardMaterial color="#654637" roughness={0.84} metalness={0.48} flatShading />
+        {ROUTE_DRUMS.map(([x, z, lean], index) => <Instance key={index} position={[x, 0.38, z]} rotation={[lean, index * 0.74, lean * 0.5]} color={index % 3 === 0 ? '#3f5549' : '#654637'} />)}
+      </Instances>
+      <Instances limit={ROUTE_DRAINS.length} range={ROUTE_DRAINS.length}>
+        <boxGeometry args={[0.62, 0.035, 0.32]} />
+        <meshStandardMaterial color="#20231f" roughness={0.52} metalness={0.7} />
+        {ROUTE_DRAINS.map(([x, z], index) => <Instance key={index} position={[x, 0.105, z]} rotation={[0, index % 2 ? 0.04 : -0.03, 0]} />)}
+      </Instances>
+      <Instances limit={12} range={12}>
+        <planeGeometry args={[0.12, 1.45]} />
+        <meshBasicMaterial color="#a29969" transparent opacity={0.18} depthWrite={false} />
+        {Array.from({ length: 12 }, (_, index) => (
+          <Instance key={index} position={[index % 3 === 0 ? 0.28 : 0, 0.018, 21 - index * 3.25]} rotation={[-Math.PI / 2, 0, (index % 3 - 1) * 0.025]} scale={[1 - (index % 4) * 0.08, 0.7 + (index % 3) * 0.1, 1]} />
+        ))}
+      </Instances>
+
+      <AbandonedDeliveryVan kit={kit} position={[9.25, 0, -24.4]} rotation={-0.18} />
+
+      <group position={[11.45, 0, -21.5]} rotation={[0, -0.06, 0]}>
+        <mesh geometry={kit.bar} material={kit.metal} position={[0, 1.65, 0]} scale={[0.24, 3.3, 0.24]} castShadow />
+        <mesh geometry={kit.bar} material={kit.rust} position={[0, 3.18, 0]} rotation={[0, 0, -0.025]} scale={[1.36, 1.45, 0.28]} castShadow />
+        <mesh geometry={kit.bar} material={kit.glass} position={[0, 3.32, 0.16]} scale={[1.08, 0.62, 0.04]} />
+        {[0, 1, 2].map((row) => (
+          <group key={row} position={[0, 3.57 - row * 0.27, 0.205]}>
+            <mesh geometry={kit.bar} material={row === 1 ? kit.trim : kit.rust} scale={[0.72 - row * 0.08, 0.045, 0.035]} />
+            <mesh geometry={kit.bar} material={kit.metal} position={[0.46, 0, 0]} scale={[0.1, 0.04, 0.035]} />
+          </group>
+        ))}
+      </group>
+      <VentSteam quality={quality} reducedMotion={reducedMotion} />
     </group>
   )
 }
@@ -781,13 +993,29 @@ function HangingCables() {
     new THREE.CatmullRomCurve3([new THREE.Vector3(-8.7, 7.8, 15), new THREE.Vector3(0, 5.7, 11), new THREE.Vector3(8.8, 8.3, 7)]),
     new THREE.CatmullRomCurve3([new THREE.Vector3(-13, 8.5, -29), new THREE.Vector3(0, 6.2, -35), new THREE.Vector3(13.2, 8.1, -42)]),
     new THREE.CatmullRomCurve3([new THREE.Vector3(-6.5, 8.2, -73), new THREE.Vector3(0, 5.4, -78), new THREE.Vector3(6.5, 8.7, -82)]),
-    new THREE.CatmullRomCurve3([new THREE.Vector3(-15, 9.5, -101), new THREE.Vector3(0, 6.8, -107), new THREE.Vector3(15, 9, -111)])
+    new THREE.CatmullRomCurve3([new THREE.Vector3(-15, 9.5, -101), new THREE.Vector3(0, 6.8, -107), new THREE.Vector3(15, 9, -111)]),
+    new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-8.38, 6.4, 20.5), new THREE.Vector3(-8.34, 5.55, 11), new THREE.Vector3(-8.38, 6.38, 1.5),
+      new THREE.Vector3(-10.1, 5.45, -11), new THREE.Vector3(-12.38, 6.42, -25), new THREE.Vector3(-12.34, 5.5, -36), new THREE.Vector3(-12.38, 6.4, -47.5)
+    ]),
+    new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-7.02, 6.42, 20.5), new THREE.Vector3(-6.98, 5.62, 11), new THREE.Vector3(-7.02, 6.4, 1.5),
+      new THREE.Vector3(-8.8, 5.55, -11), new THREE.Vector3(-11.02, 6.44, -25), new THREE.Vector3(-10.98, 5.58, -36), new THREE.Vector3(-11.02, 6.42, -47.5)
+    ]),
+    new THREE.CatmullRomCurve3([
+      new THREE.Vector3(8.36, 6.38, 11.5), new THREE.Vector3(8.34, 5.5, 1.4), new THREE.Vector3(8.38, 6.4, -8.5),
+      new THREE.Vector3(10.1, 5.5, -21), new THREE.Vector3(12.36, 6.42, -35), new THREE.Vector3(12.34, 5.48, -46), new THREE.Vector3(12.38, 6.4, -57)
+    ]),
+    new THREE.CatmullRomCurve3([
+      new THREE.Vector3(7, 6.4, 11.5), new THREE.Vector3(6.98, 5.58, 1.4), new THREE.Vector3(7.02, 6.42, -8.5),
+      new THREE.Vector3(8.78, 5.58, -21), new THREE.Vector3(11, 6.44, -35), new THREE.Vector3(10.98, 5.56, -46), new THREE.Vector3(11.02, 6.42, -57)
+    ])
   ], [])
   return (
     <group>
       {curves.map((curve, index) => (
         <mesh key={index} castShadow>
-          <tubeGeometry args={[curve, 24, 0.026 + (index % 2) * 0.01, 5, false]} />
+          <tubeGeometry args={[curve, index < 4 ? 24 : 42, 0.026 + (index % 2) * 0.01, 5, false]} />
           <meshStandardMaterial color="#171b18" roughness={0.6} metalness={0.64} />
         </mesh>
       ))}
@@ -879,6 +1107,7 @@ export function CityEnvironment({ quality, reducedMotion }: { quality: boolean; 
   return (
     <group>
       <WetStreet surfaceMap={surfaceMap} />
+      <RouteStreetDressing quality={quality} reducedMotion={reducedMotion} />
       {BUILDINGS.map((building) => <RuinedBuilding key={building.seed} building={building} surfaceMap={surfaceMap} />)}
       <PumpStationSet />
       <SolanaGateSet />

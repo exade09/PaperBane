@@ -22,7 +22,17 @@ export const WORLD_COLLIDERS: WorldBox[] = [
   { minX: -0.78, maxX: 0.78, minZ: -61.52, maxZ: -60.48, maxY: 2.6 },
   { minX: -5.9, maxX: -3.8, minZ: -79.8, maxZ: -75.6, maxY: 1.5 },
   { minX: 7.2, maxX: 11.7, minZ: -114.2, maxZ: -107.9, maxY: 2.5 },
-  { minX: -13.2, maxX: -9.2, minZ: -100.4, maxZ: -94.4, maxY: 2.4 }
+  { minX: -13.2, maxX: -9.2, minZ: -100.4, maxZ: -94.4, maxY: 2.4 },
+  { minX: 7.78, maxX: 10.72, minZ: -26.5, maxZ: -22.28, maxY: 1.9 },
+  { minX: 10.72, maxX: 12.18, minZ: -21.78, maxZ: -21.22, maxY: 4 },
+  { minX: -7.99, maxX: -7.45, minZ: 20.23, maxZ: 20.77, maxY: 6.5 },
+  { minX: -7.97, maxX: -7.43, minZ: 1.23, maxZ: 1.77, maxY: 6.5 },
+  { minX: 7.41, maxX: 7.95, minZ: 11.23, maxZ: 11.77, maxY: 6.5 },
+  { minX: 7.45, maxX: 7.99, minZ: -8.77, maxZ: -8.23, maxY: 6.5 },
+  { minX: -11.99, maxX: -11.45, minZ: -25.27, maxZ: -24.73, maxY: 6.5 },
+  { minX: -11.97, maxX: -11.43, minZ: -47.77, maxZ: -47.23, maxY: 6.5 },
+  { minX: 11.41, maxX: 11.95, minZ: -35.27, maxZ: -34.73, maxY: 6.5 },
+  { minX: 11.43, maxX: 11.97, minZ: -57.27, maxZ: -56.73, maxY: 6.5 }
 ]
 
 export const INTRO_GATE_COLLIDER: WorldBox = {

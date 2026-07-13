@@ -359,7 +359,11 @@ export function Player({
         if (soundTime !== null && previousElapsed < soundTime && currentAction.elapsed >= soundTime) {
           if (currentAction.kind === 'LIGHT') combat.emitSound('light-swing', 0.72)
           if (currentAction.kind === 'HEAVY') combat.emitSound('heavy-swing', 1)
-          if (currentAction.kind === 'DODGE') combat.emitSound('dodge', 0.72)
+          if (currentAction.kind === 'DODGE') {
+            combat.emitSound('dodge', 0.72)
+            combat.addDodgeBurst(position.current, currentAction.direction)
+            currentAction.effectDone = true
+          }
           currentAction.soundDone = true
         }
       }
@@ -494,9 +498,15 @@ export function Player({
   })
 
   return (
-    <group ref={playerRef} position={spawn}>
+    <group ref={playerRef} name="paperbane-player" position={spawn}>
       <PlayerModel animation={animation} surge={useGameStore((state) => state.surgeTime > 0)} damageFlash={damageFlash} />
-      <pointLight position={[0.55, 1.1, 0]} color="#7dff48" intensity={0.52} distance={3.8} decay={2} />
+      <pointLight
+        position={[0.8, 2.55, 1.35]}
+        color="#91c99a"
+        intensity={0.68}
+        distance={5.2}
+        decay={2}
+      />
     </group>
   )
 }

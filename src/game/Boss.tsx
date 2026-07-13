@@ -25,14 +25,130 @@ interface BossModelProps {
 const damp = (value: number, target: number, delta: number, speed = 10) =>
   THREE.MathUtils.lerp(value, target, 1 - Math.exp(-speed * delta))
 
+const KING_GEOMETRY = {
+  high: new THREE.IcosahedronGeometry(1, 3),
+  medium: new THREE.DodecahedronGeometry(1, 2),
+  low: new THREE.DodecahedronGeometry(1, 1),
+  limb: new THREE.CylinderGeometry(0.82, 1, 2, 7, 2),
+  pipe: new THREE.CylinderGeometry(1, 1, 1, 7),
+  crown: new THREE.ConeGeometry(1, 1, 4, 1),
+  plane: new THREE.PlaneGeometry(1, 1)
+}
+
+const material = (color: string, roughness: number, metalness = 0) => new THREE.MeshStandardMaterial({
+  color,
+  roughness,
+  metalness,
+  flatShading: true
+})
+
+const KING_MATERIALS = {
+  coat: material('#20231f', 0.94, 0.03),
+  coatPanel: material('#30332e', 0.9, 0.04),
+  shirt: material('#77756b', 1),
+  trousers: material('#292925', 0.97, 0.02),
+  boots: material('#171713', 0.86, 0.18),
+  sole: material('#0d0e0c', 0.94, 0.12),
+  skin: material('#756f63', 1),
+  damagedSkin: material('#51463f', 1),
+  hair: material('#161815', 0.96),
+  paper: material('#aaa493', 0.98),
+  rust: material('#62443a', 0.9, 0.1),
+  metal: material('#454941', 0.68, 0.55),
+  green: new THREE.MeshStandardMaterial({ color: '#62b53d', emissive: '#285f20', emissiveIntensity: 0.45, roughness: 0.68, metalness: 0.12, flatShading: true }),
+  purple: new THREE.MeshStandardMaterial({ color: '#76509a', emissive: '#36214e', emissiveIntensity: 0.36, roughness: 0.74, flatShading: true }),
+  blood: new THREE.MeshStandardMaterial({ color: '#5e2526', roughness: 0.88, flatShading: true })
+}
+
+function KingInsignia({ rear = false }: { rear?: boolean }) {
+  const texture = useMemo(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 512
+    canvas.height = 640
+    const context = canvas.getContext('2d')
+    if (context) {
+      context.fillStyle = '#252823'
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      for (let index = 0; index < 52; index += 1) {
+        const x = (index * 97) % canvas.width
+        const y = (index * 163) % canvas.height
+        context.fillStyle = index % 5 === 0 ? 'rgba(103,76,55,.4)' : 'rgba(8,10,8,.28)'
+        context.fillRect(x, y, 12 + index % 4 * 9, 4 + index % 3 * 5)
+      }
+      context.textAlign = 'center'
+      context.textBaseline = 'middle'
+      context.font = '900 82px Impact, Arial Narrow, sans-serif'
+      context.fillStyle = '#b9b2a0'
+      context.fillText(rear ? 'PAPER' : 'PAPER', 256, 145)
+      context.fillText(rear ? 'CROWN' : 'KING', 256, 232)
+      context.strokeStyle = rear ? '#8a5bb1' : '#70c947'
+      context.lineWidth = 20
+      context.beginPath()
+      context.moveTo(256, 304)
+      context.lineTo(256, 514)
+      context.moveTo(196, 350)
+      context.lineTo(316, 350)
+      context.moveTo(216, 468)
+      context.lineTo(296, 468)
+      context.stroke()
+      context.fillStyle = rear ? '#715091' : '#568e3d'
+      context.fillRect(216, 350, 80, 118)
+      context.strokeStyle = '#171a16'
+      context.lineWidth = 8
+      context.strokeRect(216, 350, 80, 118)
+    }
+    const result = new THREE.CanvasTexture(canvas)
+    result.colorSpace = THREE.SRGBColorSpace
+    result.minFilter = THREE.LinearMipmapLinearFilter
+    result.anisotropy = 4
+    return result
+  }, [rear])
+  useEffect(() => () => texture.dispose(), [texture])
+  return (
+    <mesh geometry={KING_GEOMETRY.plane}>
+      <meshStandardMaterial map={texture} roughness={0.93} metalness={0.02} />
+    </mesh>
+  )
+}
+
+function PaperFinger({ x, z, length, bend = 0 }: { x: number; z: number; length: number; bend?: number }) {
+  return (
+    <group position={[x, 0, z]} rotation={[bend * 0.3, 0, bend]}>
+      <mesh geometry={KING_GEOMETRY.low} material={KING_MATERIALS.paper} position={[0, -length * 0.28, 0]} scale={[0.075, length * 0.3, 0.075]} castShadow />
+      <mesh geometry={KING_GEOMETRY.low} material={KING_MATERIALS.paper} position={[bend * 0.06, -length * 0.72, 0.025]} rotation={[bend * 0.55, 0, bend * 0.18]} scale={[0.064, length * 0.25, 0.064]} castShadow />
+      <mesh geometry={KING_GEOMETRY.plane} material={KING_MATERIALS.damagedSkin} position={[bend * 0.08, -length * 0.98, 0.08]} rotation={[0, 0, bend * 0.2]} scale={[0.065, 0.12, 1]} />
+    </group>
+  )
+}
+
+function GiantPaperHand({ mirror = false }: { mirror?: boolean }) {
+  const direction = mirror ? -1 : 1
+  return (
+    <group>
+      <mesh geometry={KING_GEOMETRY.medium} material={KING_MATERIALS.paper} scale={[0.34, 0.34, 0.18]} castShadow />
+      <mesh geometry={KING_GEOMETRY.low} material={KING_MATERIALS.damagedSkin} position={[direction * 0.24, -0.02, 0]} rotation={[0.1, 0, direction * 0.72]} scale={[0.12, 0.26, 0.11]} castShadow />
+      <PaperFinger x={-0.23} z={0.015} length={0.75} bend={-0.08} />
+      <PaperFinger x={-0.075} z={0.06} length={0.92} bend={-0.025} />
+      <PaperFinger x={0.085} z={0.055} length={0.88} bend={0.03} />
+      <PaperFinger x={0.235} z={0} length={0.72} bend={0.1} />
+    </group>
+  )
+}
+
 function BossModel({ state, stateTime, enraged, flash }: BossModelProps) {
   const reducedMotion = useReducedMotion()
   const root = useRef<THREE.Group>(null)
   const torso = useRef<THREE.Group>(null)
   const leftArm = useRef<THREE.Group>(null)
   const rightArm = useRef<THREE.Group>(null)
+  const leftForearm = useRef<THREE.Group>(null)
+  const rightForearm = useRef<THREE.Group>(null)
+  const leftHand = useRef<THREE.Group>(null)
+  const rightHand = useRef<THREE.Group>(null)
   const leftLeg = useRef<THREE.Group>(null)
   const rightLeg = useRef<THREE.Group>(null)
+  const head = useRef<THREE.Group>(null)
+  const coatTails = useRef<THREE.Group>(null)
   const chest = useRef<THREE.MeshStandardMaterial>(null)
   const shirt = useRef<THREE.MeshStandardMaterial>(null)
 
@@ -41,59 +157,127 @@ function BossModel({ state, stateTime, enraged, flash }: BossModelProps) {
     if (gameStatus !== 'PLAYING' && gameStatus !== 'BOSS_INTRO' && state !== 'DEAD') return
     const time = clock.elapsedTime
     const attackTime = stateTime.current
-    let leftArmX = 0.22
-    let rightArmX = -0.18
-    let armZ = 0.22
+    let leftArmX = 0.16
+    let rightArmX = -0.12
+    let armZ = 0.3
+    let elbowX = -0.22
+    let wristZ = 0
     let leg = 0
-    let torsoX = 0.13
+    let torsoX = 0.1
     let torsoY = 0
     let rootY = Math.sin(time * 1.3) * 0.025
     let rootX = 0
     let rootZ = 0
+    let headX = 0.04
+    let headY = Math.sin(time * 0.72) * 0.045
+    let tailX = -0.04
 
     if (state === 'CHASE') {
-      leg = Math.sin(time * (enraged ? 6.6 : 5.2)) * 0.52
-      leftArmX = -leg * 0.65
-      rightArmX = leg * 0.65
-      torsoX = 0.25
-      rootY = Math.abs(Math.sin(time * 5.2)) * 0.045
+      leg = Math.sin(time * (enraged ? 6.8 : 5.4)) * 0.5
+      leftArmX = -leg * 0.58 + 0.1
+      rightArmX = leg * 0.58 - 0.1
+      elbowX = -0.34 + Math.abs(leg) * 0.18
+      torsoX = 0.22
+      torsoY = leg * 0.07
+      headY = -leg * 0.05
+      tailX = -0.12 - Math.abs(leg) * 0.08
+      rootY = Math.abs(Math.sin(time * 5.4)) * 0.04
     } else if (state === 'SLAM') {
-      const p = Math.min(1, attackTime / 1.48)
-      if (p < 0.58) {
-        leftArmX = -2.65 * (p / 0.58)
-        rightArmX = -2.65 * (p / 0.58)
-        torsoX = -0.2
+      if (attackTime < 0.22) {
+        const brace = attackTime / 0.22
+        leftArmX = 0.16 + brace * 0.42
+        rightArmX = -0.12 + brace * 0.7
+        torsoX = 0.1 + brace * 0.23
+        rootY = -brace * 0.1
+        headX = -brace * 0.1
+      } else if (attackTime < 0.8) {
+        const windup = (attackTime - 0.22) / 0.58
+        leftArmX = 0.58 - windup * 3.3
+        rightArmX = 0.58 - windup * 3.3
+        elbowX = -0.25 - windup * 0.48
+        armZ = 0.3 - windup * 0.16
+        torsoX = 0.33 - windup * 0.5
+        rootY = -0.1 + windup * 0.1
+        headX = -0.1 + windup * 0.2
+        tailX = -0.12 + windup * 0.22
+      } else if (attackTime < 0.98) {
+        const slam = (attackTime - 0.8) / 0.18
+        leftArmX = -2.72 + slam * 4.0
+        rightArmX = -2.72 + slam * 4.0
+        elbowX = -0.73 + slam * 0.96
+        torsoX = -0.17 + slam * 1.03
+        rootY = -slam * 0.16
+        headX = 0.1 + slam * 0.32
+        tailX = 0.1 - slam * 0.42
       } else {
-        const slam = Math.min(1, (p - 0.58) / 0.18)
-        leftArmX = -2.65 + slam * 4.05
-        rightArmX = -2.65 + slam * 4.05
-        torsoX = -0.2 + slam * 0.86
+        const recover = Math.min(1, (attackTime - 0.98) / 0.5)
+        leftArmX = 1.28 - recover * 1.12
+        rightArmX = 1.28 - recover * 1.4
+        elbowX = 0.23 - recover * 0.45
+        torsoX = 0.86 - recover * 0.76
+        rootY = -0.16 + recover * 0.16
+        headX = 0.42 - recover * 0.38
+        tailX = -0.32 + recover * 0.28
       }
     } else if (state === 'CHARGE') {
       const prep = Math.min(1, attackTime / 0.65)
-      torsoX = -0.35 + prep * 1.04
-      leftArmX = 0.5 + prep * 0.8
-      rightArmX = 0.5 + prep * 0.8
-      leg = attackTime > 0.65 && attackTime < 1.35 ? Math.sin(time * 14) * 0.82 : 0
+      torsoX = 0.1 + prep * 0.62
+      leftArmX = 0.16 - prep * 1.28
+      rightArmX = -0.12 - prep * 0.98
+      armZ = 0.3 + prep * 0.2
+      elbowX = -0.22 - prep * 0.58
+      rootY = -prep * 0.12
+      headX = -prep * 0.24
+      tailX = -0.04 - prep * 0.5
+      if (attackTime > 0.65 && attackTime < 1.35) {
+        leg = Math.sin(time * 14) * 0.78
+        torsoY = leg * 0.08
+        headY = -leg * 0.07
+        wristZ = Math.sin(time * 14) * 0.12
+      } else if (attackTime >= 1.35) {
+        const skid = Math.min(1, (attackTime - 1.35) / 0.7)
+        torsoX = 0.72 - skid * 0.62
+        leftArmX = -1.12 + skid * 1.28
+        rightArmX = -1.1 + skid * 0.98
+        rootY = -0.12 + skid * 0.12
+      }
     } else if (state === 'WAVE') {
       const rise = Math.min(1, attackTime / 0.88)
-      leftArmX = -2.4 * rise
-      rightArmX = -2.4 * rise
-      armZ = 0.65
-      torsoX = -0.12
-      torsoY = Math.sin(time * 5) * 0.1
+      const release = THREE.MathUtils.clamp((attackTime - 0.88) / 0.84, 0, 1)
+      leftArmX = -2.35 * rise + release * 1.55
+      rightArmX = -2.35 * rise + release * 1.55
+      elbowX = -0.22 - rise * 0.46 + release * 0.62
+      armZ = 0.35 + rise * 0.42 - release * 0.25
+      wristZ = Math.sin(time * 5.2) * 0.13 * (1 - release)
+      torsoX = -0.12 + release * 0.58
+      torsoY = Math.sin(time * 5) * 0.08 * (1 - release)
+      headX = 0.08 - rise * 0.18 + release * 0.32
+      rootY = -release * 0.1
+      tailX = 0.12 - release * 0.38
     } else if (state === 'STAGGER') {
-      torsoX = -Math.sin(Math.min(1, attackTime / 0.3) * Math.PI) * 0.25
-      rootZ = 0.12
-      leftArmX = 0.75
-      rightArmX = 0.75
+      const recoil = Math.sin(Math.min(1, attackTime / 0.36) * Math.PI)
+      torsoX = -recoil * 0.48
+      torsoY = recoil * 0.16
+      rootZ = 0.16
+      leftArmX = 0.7 + recoil * 0.45
+      rightArmX = 0.6 + recoil * 0.3
+      elbowX = 0.1
+      headX = -recoil * 0.34
+      headY = recoil * 0.2
+      tailX = recoil * 0.25
     } else if (state === 'DEAD') {
-      rootX = Math.min(Math.PI * 0.46, attackTime * 0.95)
-      rootZ = -0.16
-      rootY = -Math.min(1.4, attackTime * 0.62)
-      leftArmX = 1.35
-      rightArmX = 0.95
-      leg = -0.2
+      const fall = Math.min(1, attackTime / 1.65)
+      rootX = fall * Math.PI * 0.48
+      rootZ = -0.18 * Math.sin(fall * Math.PI)
+      rootY = -Math.min(1.36, attackTime * 0.6)
+      leftArmX = 1.25 + fall * 0.4
+      rightArmX = 0.8 + fall * 0.25
+      elbowX = 0.32
+      wristZ = 0.24
+      leg = -0.18
+      headX = -0.2 + fall * 0.55
+      headY = 0.22
+      tailX = -0.5
     }
 
     if (root.current) {
@@ -113,8 +297,17 @@ function BossModel({ state, stateTime, enraged, flash }: BossModelProps) {
       rightArm.current.rotation.x = damp(rightArm.current.rotation.x, rightArmX, delta, 14)
       rightArm.current.rotation.z = damp(rightArm.current.rotation.z, -armZ, delta)
     }
+    if (leftForearm.current) leftForearm.current.rotation.x = damp(leftForearm.current.rotation.x, elbowX, delta, 13)
+    if (rightForearm.current) rightForearm.current.rotation.x = damp(rightForearm.current.rotation.x, elbowX, delta, 13)
+    if (leftHand.current) leftHand.current.rotation.z = damp(leftHand.current.rotation.z, wristZ, delta, 12)
+    if (rightHand.current) rightHand.current.rotation.z = damp(rightHand.current.rotation.z, -wristZ, delta, 12)
     if (leftLeg.current) leftLeg.current.rotation.x = damp(leftLeg.current.rotation.x, leg, delta)
     if (rightLeg.current) rightLeg.current.rotation.x = damp(rightLeg.current.rotation.x, -leg, delta)
+    if (head.current) {
+      head.current.rotation.x = damp(head.current.rotation.x, headX, delta, 9)
+      head.current.rotation.y = damp(head.current.rotation.y, headY, delta, 8)
+    }
+    if (coatTails.current) coatTails.current.rotation.x = damp(coatTails.current.rotation.x, tailX, delta, 8)
     if (chest.current) {
       const fade = state === 'DEAD' ? Math.max(0, 1 - attackTime / 2.15) : 1
       chest.current.emissiveIntensity = ((enraged ? 4.4 : 2.8) + (reducedMotion ? 0 : Math.sin(time * 7) * 0.5)) * fade
@@ -122,105 +315,128 @@ function BossModel({ state, stateTime, enraged, flash }: BossModelProps) {
     if (shirt.current) shirt.current.emissiveIntensity = flash ? 0.95 : 0
   })
 
-  const Finger = ({ x, z, length }: { x: number; z: number; length: number }) => (
-    <mesh position={[x, -1.28 - length * 0.5, z]} rotation={[0.08, 0, x * 0.2]} castShadow>
-      <boxGeometry args={[0.075, length, 0.075]} />
-      <meshStandardMaterial color="#8b887e" roughness={1} />
-    </mesh>
-  )
-
   return (
-    <group ref={root} scale={[1.22, 1.22, 1.22]}>
-      <group ref={torso} position={[0, 1.75, 0]}>
-        <mesh castShadow scale={[1.18, 1, 0.7]}>
-          <boxGeometry args={[1.15, 1.38, 0.65]} />
-          <meshStandardMaterial ref={shirt} color="#b0ab99" emissive="#7dff48" emissiveIntensity={0} roughness={1} />
+    <group ref={root} scale={[1.16, 1.16, 1.16]} dispose={null}>
+      <group ref={torso} position={[0, 1.88, 0]}>
+        <mesh geometry={KING_GEOMETRY.medium} material={KING_MATERIALS.coat} scale={[0.83, 0.77, 0.49]} castShadow receiveShadow />
+        <mesh geometry={KING_GEOMETRY.medium} position={[0, -0.72, -0.02]} scale={[0.68, 0.38, 0.45]} castShadow>
+          <meshStandardMaterial ref={shirt} color="#30332e" emissive="#7dff48" emissiveIntensity={0} roughness={0.92} flatShading />
         </mesh>
-        <mesh position={[0, 0.06, 0.36]}>
-          <boxGeometry args={[0.68, 0.68, 0.035]} />
-          <meshStandardMaterial color="#272a27" roughness={1} />
+        <mesh geometry={KING_GEOMETRY.medium} material={KING_MATERIALS.shirt} position={[0, 0.01, 0.36]} scale={[0.49, 0.61, 0.12]} castShadow />
+
+        <mesh geometry={KING_GEOMETRY.crown} material={KING_MATERIALS.coatPanel} position={[-0.42, 0.13, 0.5]} rotation={[0.06, 0, -0.3]} scale={[0.28, 0.82, 0.16]} castShadow />
+        <mesh geometry={KING_GEOMETRY.crown} material={KING_MATERIALS.coatPanel} position={[0.42, 0.13, 0.5]} rotation={[0.06, 0, 0.3]} scale={[0.28, 0.82, 0.16]} castShadow />
+        <mesh geometry={KING_GEOMETRY.pipe} material={KING_MATERIALS.green} position={[-0.67, 0.02, 0.43]} rotation={[0, 0, -0.04]} scale={[0.045, 0.78, 0.045]} />
+        <mesh geometry={KING_GEOMETRY.pipe} material={KING_MATERIALS.purple} position={[0.67, 0.02, 0.43]} rotation={[0, 0, 0.04]} scale={[0.045, 0.78, 0.045]} />
+        <mesh position={[0, 0.02, 0.505]} scale={[0.6, 0.67, 1]}>
+          <KingInsignia />
         </mesh>
-        <mesh position={[0, 0.06, 0.39]}>
-          <boxGeometry args={[0.21, 0.62, 0.11]} />
-          <meshStandardMaterial
-            ref={chest}
-            color="#c63f3f"
-            emissive="#c63f3f"
-            emissiveIntensity={3}
-            toneMapped={false}
-          />
+        <mesh position={[0, 0.01, -0.505]} rotation={[0, Math.PI, 0]} scale={[0.68, 0.74, 1]}>
+          <KingInsignia rear />
         </mesh>
-        <mesh position={[0, 0.48, 0.39]}>
-          <cylinderGeometry args={[0.025, 0.025, 0.27, 5]} />
-          <meshStandardMaterial color="#ff5353" emissive="#c63f3f" emissiveIntensity={3} toneMapped={false} />
+
+        <mesh position={[0, -0.07, 0.55]}>
+          <boxGeometry args={[0.18, 0.5, 0.06]} />
+          <meshStandardMaterial ref={chest} color="#b83b3b" emissive="#c63f3f" emissiveIntensity={3} roughness={0.48} toneMapped={false} />
         </mesh>
-        <mesh position={[0, -0.36, 0.39]}>
-          <cylinderGeometry args={[0.025, 0.025, 0.27, 5]} />
-          <meshStandardMaterial color="#ff5353" emissive="#c63f3f" emissiveIntensity={3} toneMapped={false} />
-        </mesh>
-        <mesh position={[0.34, 0.35, 0.39]} rotation={[0, 0, -0.6]}>
-          <boxGeometry args={[0.28, 0.055, 0.03]} />
-          <meshStandardMaterial color="#985cff" emissive="#713fc9" emissiveIntensity={0.85} />
-        </mesh>
-        <group ref={leftArm} position={[-0.78, 0.44, 0]}>
-          <mesh position={[0, -0.56, 0]} castShadow>
-            <boxGeometry args={[0.4, 1.2, 0.43]} />
-            <meshStandardMaterial color="#9a9687" roughness={1} />
-          </mesh>
-          <Finger x={-0.14} z={0.04} length={0.72} />
-          <Finger x={-0.045} z={0.08} length={0.88} />
-          <Finger x={0.055} z={0.04} length={0.82} />
-          <Finger x={0.15} z={0} length={0.68} />
+        <mesh geometry={KING_GEOMETRY.pipe} material={KING_MATERIALS.green} position={[0, 0.31, 0.58]} scale={[0.025, 0.24, 0.025]} />
+        <mesh geometry={KING_GEOMETRY.pipe} material={KING_MATERIALS.green} position={[0, -0.45, 0.58]} scale={[0.025, 0.24, 0.025]} />
+
+        <group ref={coatTails} position={[0, -0.61, -0.08]}>
+          {[-0.48, -0.16, 0.16, 0.48].map((x, index) => (
+            <mesh key={x} geometry={KING_GEOMETRY.crown} material={index % 2 ? KING_MATERIALS.coat : KING_MATERIALS.coatPanel} position={[x, -0.52 - (index % 2) * 0.08, index % 2 ? 0.04 : -0.02]} rotation={[0, 0, (index - 1.5) * 0.08]} scale={[0.31, 1.06 + (index % 2) * 0.12, 0.24]} castShadow />
+          ))}
+          <mesh geometry={KING_GEOMETRY.pipe} material={KING_MATERIALS.green} position={[0, -1.02, 0.04]} rotation={[0, 0, Math.PI / 2]} scale={[0.035, 0.62, 0.035]} />
         </group>
-        <group ref={rightArm} position={[0.78, 0.44, 0]}>
-          <mesh position={[0, -0.56, 0]} castShadow>
-            <boxGeometry args={[0.4, 1.2, 0.43]} />
-            <meshStandardMaterial color="#999587" roughness={1} />
-          </mesh>
-          <Finger x={-0.14} z={0.04} length={0.68} />
-          <Finger x={-0.045} z={0.08} length={0.82} />
-          <Finger x={0.055} z={0.04} length={0.88} />
-          <Finger x={0.15} z={0} length={0.72} />
+
+        <group ref={leftArm} position={[-0.82, 0.45, 0]} rotation={[0, 0, 0.3]}>
+          <mesh geometry={KING_GEOMETRY.low} material={KING_MATERIALS.coatPanel} scale={[0.34, 0.3, 0.32]} castShadow />
+          <mesh geometry={KING_GEOMETRY.limb} material={KING_MATERIALS.coat} position={[0, -0.48, 0]} scale={[0.25, 0.48, 0.25]} castShadow />
+          <mesh geometry={KING_GEOMETRY.pipe} material={KING_MATERIALS.green} position={[0, -0.86, 0]} scale={[0.27, 0.045, 0.27]} />
+          <group ref={leftForearm} position={[0, -0.86, 0.02]} rotation={[-0.22, 0, 0]}>
+            <mesh geometry={KING_GEOMETRY.limb} material={KING_MATERIALS.damagedSkin} position={[0, -0.4, 0]} scale={[0.21, 0.41, 0.21]} castShadow />
+            <mesh geometry={KING_GEOMETRY.low} material={KING_MATERIALS.rust} position={[0.12, -0.29, 0.16]} scale={[0.08, 0.22, 0.035]} />
+            <group ref={leftHand} position={[0, -0.84, 0.04]}>
+              <GiantPaperHand />
+            </group>
+          </group>
+        </group>
+
+        <group ref={rightArm} position={[0.82, 0.45, 0]} rotation={[0, 0, -0.3]}>
+          <mesh geometry={KING_GEOMETRY.low} material={KING_MATERIALS.coatPanel} scale={[0.34, 0.3, 0.32]} castShadow />
+          <mesh geometry={KING_GEOMETRY.limb} material={KING_MATERIALS.coat} position={[0, -0.48, 0]} scale={[0.25, 0.48, 0.25]} castShadow />
+          <mesh geometry={KING_GEOMETRY.pipe} material={KING_MATERIALS.purple} position={[0, -0.86, 0]} scale={[0.27, 0.045, 0.27]} />
+          <group ref={rightForearm} position={[0, -0.86, 0.02]} rotation={[-0.22, 0, 0]}>
+            <mesh geometry={KING_GEOMETRY.limb} material={KING_MATERIALS.damagedSkin} position={[0, -0.4, 0]} scale={[0.21, 0.41, 0.21]} castShadow />
+            <mesh geometry={KING_GEOMETRY.low} material={KING_MATERIALS.rust} position={[-0.12, -0.29, 0.16]} scale={[0.08, 0.22, 0.035]} />
+            <group ref={rightHand} position={[0, -0.84, 0.04]}>
+              <GiantPaperHand mirror />
+            </group>
+          </group>
         </group>
       </group>
-      <group position={[0, 2.94, 0.02]} rotation={[0.09, 0, 0]}>
-        <mesh castShadow scale={[0.88, 1.16, 0.86]}>
-          <dodecahedronGeometry args={[0.48, 0]} />
-          <meshStandardMaterial color="#73776f" roughness={1} />
-        </mesh>
-        <mesh position={[0, 0.3, -0.05]} scale={[1.04, 0.75, 1]}>
-          <dodecahedronGeometry args={[0.45, 0]} />
-          <meshStandardMaterial color="#191c19" roughness={1} />
-        </mesh>
-        <mesh position={[-0.16, 0.05, 0.43]}>
-          <boxGeometry args={[0.09, 0.045, 0.025]} />
-          <meshBasicMaterial color="#ff4b4b" toneMapped={false} />
-        </mesh>
-        <mesh position={[0.16, 0.05, 0.43]}>
-          <boxGeometry args={[0.09, 0.045, 0.025]} />
-          <meshBasicMaterial color="#ff4b4b" toneMapped={false} />
-        </mesh>
+
+      <group ref={head} position={[0, 3.13, 0.04]} rotation={[0.04, 0, 0]}>
+        <mesh geometry={KING_GEOMETRY.pipe} material={KING_MATERIALS.damagedSkin} position={[0, -0.42, 0]} scale={[0.22, 0.35, 0.22]} castShadow />
+        <mesh geometry={KING_GEOMETRY.high} material={KING_MATERIALS.skin} scale={[0.42, 0.52, 0.4]} castShadow />
+        <mesh geometry={KING_GEOMETRY.medium} material={KING_MATERIALS.damagedSkin} position={[0, -0.25, 0.16]} scale={[0.31, 0.24, 0.28]} castShadow />
+        <mesh geometry={KING_GEOMETRY.medium} material={KING_MATERIALS.skin} position={[-0.25, -0.03, 0.23]} rotation={[0, 0, -0.1]} scale={[0.18, 0.15, 0.17]} castShadow />
+        <mesh geometry={KING_GEOMETRY.medium} material={KING_MATERIALS.skin} position={[0.25, -0.03, 0.23]} rotation={[0, 0, 0.1]} scale={[0.18, 0.15, 0.17]} castShadow />
+        <mesh geometry={KING_GEOMETRY.crown} material={KING_MATERIALS.damagedSkin} position={[0, -0.05, 0.48]} rotation={[Math.PI / 2, 0, 0]} scale={[0.1, 0.24, 0.12]} castShadow />
+        <mesh geometry={KING_GEOMETRY.low} material={KING_MATERIALS.damagedSkin} position={[-0.4, 0, 0]} scale={[0.1, 0.17, 0.08]} />
+        <mesh geometry={KING_GEOMETRY.low} material={KING_MATERIALS.damagedSkin} position={[0.4, 0, 0]} scale={[0.1, 0.17, 0.08]} />
+        <mesh geometry={KING_GEOMETRY.plane} material={KING_MATERIALS.blood} position={[0, -0.28, 0.395]} scale={[0.24, 0.075, 1]} />
+        {[-0.17, 0.17].map((x) => (
+          <group key={x} position={[x, 0.02, 0.39]}>
+            <mesh geometry={KING_GEOMETRY.low} material={KING_MATERIALS.damagedSkin} scale={[0.12, 0.08, 0.06]} />
+            <mesh geometry={KING_GEOMETRY.plane} position={[0, 0, 0.068]} scale={[0.11, 0.045, 1]}>
+              <meshBasicMaterial color="#ff4b4b" toneMapped={false} />
+            </mesh>
+          </group>
+        ))}
+        <mesh geometry={KING_GEOMETRY.plane} material={KING_MATERIALS.blood} position={[-0.22, -0.12, 0.405]} rotation={[0, 0, -0.5]} scale={[0.035, 0.3, 1]} />
+
+        {Array.from({ length: 12 }, (_, index) => {
+          const angle = index / 12 * Math.PI * 2
+          return (
+            <mesh
+              key={`hair-${index}`}
+              geometry={KING_GEOMETRY.medium}
+              material={KING_MATERIALS.hair}
+              position={[Math.sin(angle) * 0.33, 0.31 + (index % 3) * 0.07, Math.cos(angle) * 0.27 - 0.06]}
+              rotation={[angle * 0.08, angle, (index % 3 - 1) * 0.19]}
+              scale={[0.18 + (index % 2) * 0.04, 0.24 + (index % 3) * 0.025, 0.15]}
+              castShadow
+            />
+          )
+        })}
+        <group position={[0, 0.63, -0.02]}>
+          <mesh geometry={KING_GEOMETRY.pipe} material={KING_MATERIALS.rust} position={[0, -0.05, 0]} scale={[0.45, 0.12, 0.45]} />
+          {[-0.34, -0.17, 0, 0.17, 0.34].map((x, index) => (
+            <mesh key={x} geometry={KING_GEOMETRY.crown} material={index === 1 ? KING_MATERIALS.green : index === 3 ? KING_MATERIALS.purple : KING_MATERIALS.paper} position={[x, 0.26 + (index % 2) * 0.08, 0]} rotation={[0, 0, (index - 2) * -0.09]} scale={[0.13, 0.56 + (index % 2) * 0.14, 0.13]} castShadow />
+          ))}
+        </group>
       </group>
-      <group ref={leftLeg} position={[-0.31, 1.12, 0]}>
-        <mesh position={[0, -0.54, 0]} castShadow>
-          <boxGeometry args={[0.48, 1.12, 0.52]} />
-          <meshStandardMaterial color="#302e2c" roughness={1} />
-        </mesh>
-        <mesh position={[0, -1.16, 0.13]}>
-          <boxGeometry args={[0.53, 0.29, 0.7]} />
-          <meshStandardMaterial color="#101210" roughness={0.85} />
-        </mesh>
-      </group>
-      <group ref={rightLeg} position={[0.31, 1.12, 0]}>
-        <mesh position={[0, -0.54, 0]} castShadow>
-          <boxGeometry args={[0.48, 1.12, 0.52]} />
-          <meshStandardMaterial color="#302e2c" roughness={1} />
-        </mesh>
-        <mesh position={[0, -1.16, 0.13]}>
-          <boxGeometry args={[0.53, 0.29, 0.7]} />
-          <meshStandardMaterial color="#101210" roughness={0.85} />
-        </mesh>
-      </group>
+
+      {[-1, 1].map((side) => {
+        const legRef = side < 0 ? leftLeg : rightLeg
+        return (
+          <group key={side} ref={legRef} position={[side * 0.34, 1.55, 0]}>
+            <mesh geometry={KING_GEOMETRY.medium} material={KING_MATERIALS.trousers} position={[0, -0.38, 0]} scale={[0.31, 0.46, 0.32]} castShadow />
+            <mesh geometry={KING_GEOMETRY.low} material={KING_MATERIALS.coatPanel} position={[0, -0.8, 0.03]} scale={[0.29, 0.22, 0.3]} castShadow />
+            <mesh geometry={KING_GEOMETRY.medium} material={KING_MATERIALS.trousers} position={[0, -1.12, 0]} rotation={[side * 0.03, 0, side * 0.035]} scale={[0.27, 0.42, 0.28]} castShadow />
+            <mesh geometry={KING_GEOMETRY.low} material={side < 0 ? KING_MATERIALS.green : KING_MATERIALS.purple} position={[side * 0.12, -1.1, 0.25]} rotation={[0, 0, side * -0.2]} scale={[0.08, 0.22, 0.035]} />
+            <group position={[0, -1.53, 0.13]} rotation={[0.02, side * 0.03, 0]}>
+              <mesh geometry={KING_GEOMETRY.medium} material={KING_MATERIALS.boots} scale={[0.35, 0.22, 0.47]} castShadow />
+              <mesh geometry={KING_GEOMETRY.low} material={KING_MATERIALS.boots} position={[0, -0.03, 0.34]} scale={[0.34, 0.18, 0.38]} castShadow />
+              <mesh geometry={KING_GEOMETRY.low} material={KING_MATERIALS.sole} position={[0, -0.19, 0.12]} scale={[0.39, 0.07, 0.55]} />
+              {[-0.2, 0, 0.2].map((x) => (
+                <mesh key={x} geometry={KING_GEOMETRY.pipe} material={KING_MATERIALS.metal} position={[x, 0.08, 0.46]} rotation={[Math.PI / 2, 0, 0]} scale={[0.025, 0.21, 0.025]} />
+              ))}
+            </group>
+          </group>
+        )
+      })}
     </group>
   )
 }
@@ -437,7 +653,7 @@ export function Boss({ playerPosition, extraColliders }: BossProps) {
   })
 
   return (
-    <group ref={group} position={[0, 0, GAME_CONFIG.world.bossCenterZ]}>
+    <group ref={group} name="paperbane-paper-king" position={[0, 0, GAME_CONFIG.world.bossCenterZ]}>
       <BossModel state={modelState} stateTime={stateTime} enraged={enraged} flash={flash} />
       {(modelState === 'SLAM' || modelState === 'CHARGE') && (
         <mesh position={[0, 0.035, modelState === 'SLAM' ? 2.4 : 4.4]} rotation={[-Math.PI / 2, 0, 0]}>
