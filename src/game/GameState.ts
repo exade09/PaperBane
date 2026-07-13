@@ -47,6 +47,16 @@ const storedNumber = (key: string) => {
 
 export type FinalRank = 'D' | 'C' | 'B' | 'A' | 'S'
 
+export type ProgressionState =
+  | 'INTRO_COMBAT'
+  | 'INTRO_COMPLETE'
+  | 'PUMP_STATION_ACTIVE'
+  | 'TERMINAL_READY'
+  | 'TERMINAL_COMPLETE'
+  | 'BOSS_READY'
+  | 'BOSS_ACTIVE'
+  | 'VICTORY'
+
 export interface CheckpointStats {
   gameTime: number
   killCount: number
@@ -101,6 +111,7 @@ const getRank = (time: number, damage: number, medkits: number, combo: number): 
 
 export interface GameStore {
   status: GameStatus
+  progression: ProgressionState
   loadingProgress: number
   hp: number
   stamina: number
@@ -146,6 +157,10 @@ export interface GameStore {
   activateSurge: () => boolean
   registerHit: (damage: number) => void
   registerKill: () => void
+  completeIntro: () => void
+  activatePumpStation: () => void
+  readyTerminal: () => void
+  readyBoss: () => void
   setObjective: (objective: string) => void
   setInteractionPrompt: (prompt: string) => void
   setMessage: (message: string) => void
@@ -163,6 +178,7 @@ export interface GameStore {
 
 export const useGameStore = create<GameStore>((set, get) => ({
   status: 'LOADING',
+  progression: 'INTRO_COMBAT',
   loadingProgress: 0,
   hp: GAME_CONFIG.player.maxHp,
   stamina: GAME_CONFIG.player.maxStamina,
@@ -203,6 +219,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
     set((state) => ({
       status: 'PLAYING',
+      progression: fromCheckpoint ? 'BOSS_READY' : 'INTRO_COMBAT',
       hp: fromCheckpoint ? 70 : GAME_CONFIG.player.maxHp,
       stamina: GAME_CONFIG.player.maxStamina,
       wick: 0,
@@ -279,11 +296,28 @@ export const useGameStore = create<GameStore>((set, get) => ({
     comboTimer: GAME_CONFIG.combat.comboWindow
   })),
   registerKill: () => set((state) => ({ killCount: state.killCount + 1 })),
+  completeIntro: () => {
+    if (get().progression !== 'INTRO_COMBAT') return
+    set({ progression: 'INTRO_COMPLETE', objective: OBJECTIVES.pumpApproach })
+  },
+  activatePumpStation: () => {
+    if (get().progression !== 'INTRO_COMPLETE') return
+    set({ progression: 'PUMP_STATION_ACTIVE', objective: OBJECTIVES.pumpFight })
+  },
+  readyTerminal: () => {
+    if (get().progression !== 'PUMP_STATION_ACTIVE') return
+    set({ progression: 'TERMINAL_READY', objective: OBJECTIVES.terminal })
+  },
+  readyBoss: () => {
+    if (get().progression !== 'TERMINAL_COMPLETE') return
+    set({ progression: 'BOSS_READY', objective: OBJECTIVES.exchange })
+  },
   setObjective: (objective) => set({ objective }),
   setInteractionPrompt: (interactionPrompt) => set({ interactionPrompt }),
   setMessage: (message) => set({ message }),
   restoreTerminal: () => {
     const state = get()
+    if (state.progression !== 'TERMINAL_READY' || state.terminalRestored) return
     const checkpointStats: CheckpointStats = {
       gameTime: state.gameTime,
       killCount: state.killCount,
@@ -294,6 +328,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     writeStorage(CHECKPOINT_KEY, 'true')
     writeStorage(CHECKPOINT_STATS_KEY, JSON.stringify(checkpointStats))
     set({
+      progression: 'TERMINAL_COMPLETE',
       terminalRestored: true,
       checkpoint: true,
       checkpointStats,
@@ -303,25 +338,39 @@ export const useGameStore = create<GameStore>((set, get) => ({
     })
     window.setTimeout(() => get().message === 'SIGNAL RESTORED' && set({ message: '' }), 2200)
   },
-  startBoss: () => set({
-    status: 'BOSS_INTRO',
-    bossActive: true,
-    bossHp: GAME_CONFIG.enemies.boss.hp,
-    objective: OBJECTIVES.boss,
-    interactionPrompt: ''
-  }),
+  startBoss: () => {
+    if (get().progression !== 'BOSS_READY') return
+    set({
+      status: 'BOSS_INTRO',
+      progression: 'BOSS_ACTIVE',
+      bossActive: true,
+      bossHp: GAME_CONFIG.enemies.boss.hp,
+      objective: OBJECTIVES.boss,
+      interactionPrompt: ''
+    })
+  },
   finishBossIntro: () => {
     if (get().status === 'BOSS_INTRO') set({ status: 'PLAYING' })
   },
   damageBoss: (amount) => set((state) => ({ bossHp: Math.max(0, state.bossHp - amount) })),
   completeGame: () => {
     const state = get()
+    if (state.progression !== 'BOSS_ACTIVE') return
     const finalRank = getRank(state.gameTime, state.damageTaken, state.medkitsUsed, state.maxCombo)
     const bestTime = state.bestTime === null ? state.gameTime : Math.min(state.bestTime, state.gameTime)
     const bestRank = state.bestRank === null || rankScore(finalRank) > rankScore(state.bestRank) ? finalRank : state.bestRank
     writeStorage(BEST_TIME_KEY, String(bestTime))
     writeStorage(BEST_RANK_KEY, bestRank)
-    set({ status: 'VICTORY', objective: OBJECTIVES.final, finalRank, bestTime, bestRank, bossHp: 0, message: '' })
+    set({
+      status: 'VICTORY',
+      progression: 'VICTORY',
+      objective: OBJECTIVES.final,
+      finalRank,
+      bestTime,
+      bestRank,
+      bossHp: 0,
+      message: ''
+    })
   },
   tick: (delta) => set((state) => {
     if (state.status !== 'PLAYING') return state

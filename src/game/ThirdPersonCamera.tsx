@@ -14,6 +14,26 @@ interface ThirdPersonCameraProps {
   extraColliders: WorldBox[]
 }
 
+const CAMERA_YAW_SENSITIVITY = 0.00245
+const CAMERA_PITCH_SENSITIVITY = 0.00195
+const CAMERA_MIN_PITCH = -0.2
+const CAMERA_MAX_PITCH = 0.62
+
+export const applyCameraPointerDelta = (
+  currentYaw: number,
+  currentPitch: number,
+  movementX: number,
+  movementY: number,
+  invertHorizontal = false
+) => ({
+  yaw: currentYaw + movementX * CAMERA_YAW_SENSITIVITY * (invertHorizontal ? -1 : 1),
+  pitch: THREE.MathUtils.clamp(
+    currentPitch + movementY * CAMERA_PITCH_SENSITIVITY,
+    CAMERA_MIN_PITCH,
+    CAMERA_MAX_PITCH
+  )
+})
+
 export function ThirdPersonCamera({ target, yaw, pitch, combatZoom, extraColliders }: ThirdPersonCameraProps) {
   const { camera, gl } = useThree()
   const combat = useCombatSystem()
@@ -28,8 +48,14 @@ export function ThirdPersonCamera({ target, yaw, pitch, combatZoom, extraCollide
     const canvas = gl.domElement
     const onMouseMove = (event: MouseEvent) => {
       if (document.pointerLockElement !== canvas || useGameStore.getState().status !== 'PLAYING') return
-      yaw.current -= event.movementX * 0.00245
-      pitch.current = THREE.MathUtils.clamp(pitch.current - event.movementY * 0.00195, -0.2, 0.62)
+      const nextLook = applyCameraPointerDelta(
+        yaw.current,
+        pitch.current,
+        event.movementX,
+        event.movementY
+      )
+      yaw.current = nextLook.yaw
+      pitch.current = nextLook.pitch
     }
     const requestLock = () => {
       if (useGameStore.getState().status === 'PLAYING' && document.pointerLockElement !== canvas) {

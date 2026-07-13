@@ -41,11 +41,31 @@ export function PumpIcon(props: IconProps) {
 
 export function DexIcon(props: IconProps) {
   return (
-    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" {...props}>
-      <path d="M5 7h22v18H5Z" fill="#111312" stroke="currentColor" strokeWidth="1.7" />
-      <path d="M9 20h3v3H9Zm5-5h3v8h-3Zm5-4h3v12h-3Z" fill="#7DFF48" />
-      <path d="m8 17 5-5 4 2 7-6" stroke="#985CFF" strokeWidth="1.8" />
-      <path d="m21 8 3 .2-.2 3" stroke="#985CFF" strokeWidth="1.8" />
+    <svg className="pb-dex-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true" {...props}>
+      <path
+        className="pb-dex-icon__echo"
+        d="m5.2 8.2 6.3-4h9l6.3 4-1.7 13.5-9.1 6-9.1-6Z"
+        stroke="#985CFF"
+        strokeWidth="1.4"
+      />
+      <path
+        className="pb-dex-icon__shell"
+        d="m4.7 7.2 6.6-4.1h9.4l6.6 4.1-1.8 14.7-9.5 6.3-9.5-6.3Z"
+        fill="#0B0E0C"
+        stroke="currentColor"
+        strokeWidth="1.45"
+      />
+      <path
+        className="pb-dex-icon__eagle"
+        d="m7.1 9.1 7.2 2.5 1.7 2.8 1.7-2.8 7.2-2.5-2 8-4.5 1.2L16 23.5l-2.4-5.2-4.5-1.2Z"
+        fill="#C5C8C4"
+        stroke="#7DFF48"
+        strokeWidth="1.25"
+        strokeLinejoin="bevel"
+      />
+      <path d="m9.5 12.2 4.5 1.6-1.5 2-3.5-1Zm13 0L18 13.8l1.5 2 3.5-1Z" fill="#0B0E0C" />
+      <path d="m13.2 14 2.8 1 2.8-1-2.8 6.5Z" fill="#985CFF" stroke="#32E6CF" strokeWidth=".55" />
+      <path d="m7.5 20.2 4.2 1.3M24.5 20.2l-4.2 1.3M11.2 6.8l-2.1 1.3M20.8 6.8l2.1 1.3" stroke="#313732" strokeWidth=".7" />
     </svg>
   )
 }

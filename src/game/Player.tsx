@@ -36,6 +36,9 @@ const actionAnimation = (action: PlayerAction): PlayerAnimation => {
   return 'HIT'
 }
 
+export const cameraYawToFacingYaw = (cameraYaw: number) =>
+  Math.atan2(Math.sin(cameraYaw), -Math.cos(cameraYaw))
+
 export function Player({
   playerRef,
   playerPosition,
@@ -72,7 +75,7 @@ export function Player({
       return
     }
     const now = performance.now() / 1000
-    facingYaw.current = cameraYaw.current + Math.PI
+    facingYaw.current = cameraYawToFacingYaw(cameraYaw.current)
     comboStep.current = now - lastLightEnd.current <= GAME_CONFIG.combat.comboWindow ? (comboStep.current + 1) % 3 : 0
     const speed = state.surgeTime > 0 ? GAME_CONFIG.surge.attackSpeedMultiplier : 1
     action.current = {
@@ -97,7 +100,7 @@ export function Player({
       return
     }
     lastStaminaUse.current = performance.now() / 1000
-    facingYaw.current = cameraYaw.current + Math.PI
+    facingYaw.current = cameraYawToFacingYaw(cameraYaw.current)
     const speed = state.surgeTime > 0 ? GAME_CONFIG.surge.attackSpeedMultiplier : 1
     action.current = {
       kind: 'HEAVY',
@@ -288,7 +291,7 @@ export function Player({
       const activeEnd = activeTime + currentAction.duration * (currentAction.kind === 'HEAVY' ? 0.2 : 0.18)
       const inActiveWindow = currentAction.elapsed >= activeTime && previousElapsed <= activeEnd
       if ((currentAction.kind === 'LIGHT' || currentAction.kind === 'HEAVY') && inActiveWindow) {
-        facingYaw.current = cameraYaw.current + Math.PI
+        facingYaw.current = cameraYawToFacingYaw(cameraYaw.current)
         const forward = new THREE.Vector3(Math.sin(facingYaw.current), 0, Math.cos(facingYaw.current)).normalize()
         const heavy = currentAction.kind === 'HEAVY'
         const baseDamage = heavy

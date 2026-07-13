@@ -2,13 +2,14 @@ import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useStat
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Boss } from './Boss'
+import { CityEnvironment } from './CityEnvironment'
 import { CombatSystem, type CombatTarget, type HitPayload, useCombatSystem } from './CombatSystem'
 import { Enemy } from './Enemy'
-import { GAME_CONFIG, OBJECTIVES } from './GameConfig'
+import { GAME_CONFIG } from './GameConfig'
 import { useGameStore } from './GameState'
 import { Player } from './Player'
 import { ThirdPersonCamera } from './ThirdPersonCamera'
-import type { WorldBox } from './WorldCollision'
+import { progressionColliders, type WorldBox } from './WorldCollision'
 import { useReducedMotion } from './useReducedMotion'
 
 function WorldLabel({
@@ -481,8 +482,20 @@ function SignalTerminal({ reducedMotion }: { reducedMotion: boolean }) {
   )
 }
 
-function SlidingGate({ z, open, color = '#7dff48' }: { z: number; open: boolean; color?: string }) {
+function SlidingGate({
+  z,
+  open,
+  color = '#7dff48',
+  halfWidth = 6.15
+}: {
+  z: number
+  open: boolean
+  color?: string
+  halfWidth?: number
+}) {
   const bars = useRef<THREE.Group>(null)
+  const barCount = Math.max(3, Math.ceil((halfWidth * 2 - 1.3) / 0.92) + 1)
+  const barWidth = halfWidth * 2 - 1.3
   useFrame((_, delta) => {
     if (bars.current) bars.current.position.y = THREE.MathUtils.lerp(
       bars.current.position.y,
@@ -492,17 +505,20 @@ function SlidingGate({ z, open, color = '#7dff48' }: { z: number; open: boolean;
   })
   return (
     <group position={[0, 0, z]}>
-      <mesh position={[-6.15, 2.2, 0]}>
+      <mesh position={[-halfWidth, 2.2, 0]}>
         <boxGeometry args={[0.42, 4.4, 0.55]} />
         <meshStandardMaterial color="#333832" metalness={0.58} roughness={0.65} />
       </mesh>
-      <mesh position={[6.15, 2.2, 0]}>
+      <mesh position={[halfWidth, 2.2, 0]}>
         <boxGeometry args={[0.42, 4.4, 0.55]} />
         <meshStandardMaterial color="#333832" metalness={0.58} roughness={0.65} />
       </mesh>
       <group ref={bars}>
-        {Array.from({ length: 13 }, (_, index) => (
-          <mesh key={index} position={[-5.5 + index * 0.92, 2.15, 0]}>
+        {Array.from({ length: barCount }, (_, index) => (
+          <mesh
+            key={index}
+            position={[-barWidth / 2 + index * (barWidth / (barCount - 1)), 2.15, 0]}
+          >
             <boxGeometry args={[0.11, 4.3, 0.2]} />
             <meshStandardMaterial color={index % 3 === 0 ? color : '#4c5049'} emissive={index % 3 === 0 ? color : '#000'} emissiveIntensity={0.45} metalness={0.65} roughness={0.58} />
           </mesh>
@@ -672,6 +688,7 @@ function BreakableCrate({
 function WorldSession() {
   const combat = useCombatSystem()
   const status = useGameStore((state) => state.status)
+  const progression = useGameStore((state) => state.progression)
   const terminalRestored = useGameStore((state) => state.terminalRestored)
   const bossActive = useGameStore((state) => state.bossActive)
   const bossHp = useGameStore((state) => state.bossHp)
@@ -683,43 +700,41 @@ function WorldSession() {
   const cameraPitch = useRef(0.18)
   const combatZoom = useRef(0)
   const [activeZone, setActiveZone] = useState<'street' | 'pump' | 'exchange'>('street')
-  const [pumpAlive, setPumpAlive] = useState(() => new Set(['pump-w1', 'pump-w2', 'pump-w3', 'pump-r1', 'pump-r2']))
+  const introAlive = useRef(new Set(['street-w1', 'street-w2']))
+  const pumpAlive = useRef(new Set(['pump-w1', 'pump-w2', 'pump-w3', 'pump-r1', 'pump-r2']))
   const lastPrompt = useRef('')
   const bossTriggered = useRef(false)
 
-  const extraColliders = useMemo<WorldBox[]>(() => {
-    const colliders: WorldBox[] = []
-    if (!terminalRestored) colliders.push({ minX: -6.4, maxX: 6.4, minZ: -67.2, maxZ: -65.7, maxY: 5 })
-    if (bossActive) colliders.push({ minX: -6.35, maxX: 6.35, minZ: -89.1, maxZ: -87.7, maxY: 5 })
-    return colliders
-  }, [bossActive, terminalRestored])
+  const extraColliders = useMemo<WorldBox[]>(
+    () => progressionColliders(progression),
+    [progression]
+  )
 
-  const spawn: [number, number, number] = terminalRestored
+  const [spawn] = useState<[number, number, number]>(() => terminalRestored
     ? [0, 0, GAME_CONFIG.world.checkpointZ - 1]
-    : [0, 0, GAME_CONFIG.world.startZ]
+    : [0, 0, GAME_CONFIG.world.startZ])
+
+  const onIntroDeath = useCallback((id: string) => {
+    if (!introAlive.current.delete(id) || introAlive.current.size > 0) return
+    useGameStore.getState().completeIntro()
+  }, [])
 
   const onPumpDeath = useCallback((id: string) => {
-    setPumpAlive((current) => {
-      if (!current.has(id)) return current
-      const next = new Set(current)
-      next.delete(id)
-      if (next.size === 0) useGameStore.getState().setObjective(OBJECTIVES.terminal)
-      return next
-    })
+    if (!pumpAlive.current.delete(id) || pumpAlive.current.size > 0) return
+    useGameStore.getState().readyTerminal()
   }, [])
 
   const onInteract = useCallback(() => {
     const state = useGameStore.getState()
     if (
       state.status === 'PLAYING' &&
-      !state.terminalRestored &&
-      pumpAlive.size === 0 &&
+      state.progression === 'TERMINAL_READY' &&
       playerPosition.current.distanceTo(new THREE.Vector3(0, 0, GAME_CONFIG.world.terminalZ)) <= 2.65
     ) {
       state.restoreTerminal()
       combat.addShake(0.22)
     }
-  }, [combat, pumpAlive])
+  }, [combat, playerPosition])
 
   useEffect(() => {
     if (status !== 'BOSS_INTRO') return
@@ -735,17 +750,14 @@ function WorldSession() {
     if (nextZone !== activeZone) setActiveZone(nextZone)
 
     if (state.status === 'PLAYING') {
-      let objective = state.objective
-      if (!state.terminalRestored) {
-        if (z > GAME_CONFIG.world.pumpEntranceZ) objective = OBJECTIVES.street
-        else objective = pumpAlive.size > 0 ? OBJECTIVES.pumpFight : OBJECTIVES.terminal
-      } else if (!state.bossActive) {
-        objective = OBJECTIVES.exchange
+      if (state.progression === 'INTRO_COMPLETE' && z < GAME_CONFIG.world.pumpEntranceZ - 0.5) {
+        state.activatePumpStation()
+      } else if (state.progression === 'TERMINAL_COMPLETE' && z < -68) {
+        state.readyBoss()
       }
-      if (objective !== state.objective) state.setObjective(objective)
 
       const terminalDistance = playerPosition.current.distanceTo(new THREE.Vector3(0, 0, GAME_CONFIG.world.terminalZ))
-      const prompt = !state.terminalRestored && pumpAlive.size === 0 && terminalDistance <= 2.65
+      const prompt = state.progression === 'TERMINAL_READY' && terminalDistance <= 2.65
         ? 'PRESS E TO RESTORE SIGNAL'
         : ''
       if (prompt !== lastPrompt.current) {
@@ -754,8 +766,7 @@ function WorldSession() {
       }
 
       if (
-        state.terminalRestored &&
-        !state.bossActive &&
+        state.progression === 'BOSS_READY' &&
         !bossTriggered.current &&
         z < GAME_CONFIG.world.bossTriggerZ - 1.7
       ) {
@@ -770,18 +781,18 @@ function WorldSession() {
 
   const bossInArena = bossActive && bossHp > 0
   const arenaDanger = bossInArena && bossHp <= GAME_CONFIG.enemies.boss.hp * 0.5
-  const arenaAmbient = arenaDanger ? '#5b1717' : bossInArena ? '#28213d' : '#89958a'
-  const arenaSky = arenaDanger ? '#4b1d25' : bossInArena ? '#3c3866' : '#65736b'
-  const keyLight = arenaDanger ? '#c63f3f' : bossInArena ? '#32e6cf' : '#a8b1a9'
+  const arenaAmbient = arenaDanger ? '#6d2020' : bossInArena ? '#37304e' : '#a6b3aa'
+  const arenaSky = arenaDanger ? '#5d2930' : bossInArena ? '#4b4770' : '#7a8981'
+  const keyLight = arenaDanger ? '#d25550' : bossInArena ? '#52ecd9' : '#c4cec7'
 
   return (
     <>
-      <ambientLight intensity={arenaDanger ? 0.18 : bossInArena ? 0.22 : 0.28} color={arenaAmbient} />
-      <hemisphereLight args={[arenaSky, '#090b0a', arenaDanger ? 0.38 : bossInArena ? 0.42 : 0.48]} />
+      <ambientLight intensity={arenaDanger ? 0.3 : bossInArena ? 0.34 : 0.43} color={arenaAmbient} />
+      <hemisphereLight args={[arenaSky, '#0b0e0c', arenaDanger ? 0.5 : bossInArena ? 0.56 : 0.64]} />
       <directionalLight
         position={[-9, 16, 8]}
         color={keyLight}
-        intensity={arenaDanger ? 0.7 : bossInArena ? 0.64 : 0.58}
+        intensity={arenaDanger ? 0.92 : bossInArena ? 0.84 : 0.82}
         castShadow={graphicsMode === 'QUALITY'}
         shadow-mapSize-width={graphicsMode === 'QUALITY' ? 1024 : 512}
         shadow-mapSize-height={graphicsMode === 'QUALITY' ? 1024 : 512}
@@ -791,10 +802,8 @@ function WorldSession() {
         shadow-camera-bottom={-25}
         shadow-camera-far={48}
       />
-      <WetGround />
-      <BuildingRows />
-      <PumpStation />
-      <SolanaExchange />
+      <directionalLight position={[11, 8, -16]} color="#687395" intensity={bossInArena ? 0.3 : 0.22} />
+      <CityEnvironment quality={graphicsMode === 'QUALITY'} reducedMotion={reducedMotion} />
       <FogBanks quality={graphicsMode === 'QUALITY'} reducedMotion={reducedMotion} />
       <BrokenCar position={[-5.2, 0, 7.8]} rotation={0.08} />
       <BrokenCar position={[4.6, 0, -5.1]} rotation={-0.2} color="#342e2c" />
@@ -825,8 +834,21 @@ function WorldSession() {
       <WorldLabel text="RIGHT CLICK HEAVY ATTACK" position={[-7.95, 2.1, -1]} rotation={[0, Math.PI / 2, 0]} width={4.4} height={0.7} fontSize={42} />
       <WorldLabel text="SPACE DODGE  Q MEDKIT" position={[7.95, 2.1, -9]} rotation={[0, -Math.PI / 2, 0]} width={4.2} height={0.7} fontSize={42} />
       <SignalTerminal reducedMotion={reducedMotion} />
-      <SlidingGate z={-66.4} open={terminalRestored} />
-      <SlidingGate z={-88.4} open={!bossActive} color="#c63f3f" />
+      <SlidingGate
+        z={GAME_CONFIG.world.pumpEntranceZ}
+        open={progression !== 'INTRO_COMBAT'}
+        halfWidth={8.25}
+      />
+      <SlidingGate
+        z={-66.4}
+        open={
+          progression === 'TERMINAL_COMPLETE' ||
+          progression === 'BOSS_READY' ||
+          progression === 'BOSS_ACTIVE' ||
+          progression === 'VICTORY'
+        }
+      />
+      <SlidingGate z={-88.4} open={progression !== 'BOSS_ACTIVE'} color="#c63f3f" />
       <CheckpointBeacon reducedMotion={reducedMotion} />
       <BreakableCrate id="crate-medkit" position={[3.3, 0, -41.5]} drop="medkit" playerPosition={playerPosition} />
       <BreakableCrate id="crate-wick" position={[-3.8, 0, -52]} drop="wick" playerPosition={playerPosition} />
@@ -834,8 +856,8 @@ function WorldSession() {
 
       {!terminalRestored && (
         <>
-          <Enemy id="street-w1" kind="walker" spawn={[-2.1, 0, 4]} active={activeZone === 'street'} playerPosition={playerPosition} extraColliders={extraColliders} />
-          <Enemy id="street-w2" kind="walker" spawn={[2.2, 0, -10.5]} active={activeZone === 'street'} playerPosition={playerPosition} extraColliders={extraColliders} />
+          <Enemy id="street-w1" kind="walker" spawn={[-2.1, 0, 4]} active={activeZone === 'street'} playerPosition={playerPosition} extraColliders={extraColliders} onDeath={onIntroDeath} />
+          <Enemy id="street-w2" kind="walker" spawn={[2.2, 0, -10.5]} active={activeZone === 'street'} playerPosition={playerPosition} extraColliders={extraColliders} onDeath={onIntroDeath} />
           <Enemy id="pump-w1" kind="walker" spawn={[3, 0, -26]} active={activeZone === 'pump'} playerPosition={playerPosition} extraColliders={extraColliders} onDeath={onPumpDeath} />
           <Enemy id="pump-w2" kind="walker" spawn={[-2, 0, -39]} active={activeZone === 'pump'} playerPosition={playerPosition} extraColliders={extraColliders} onDeath={onPumpDeath} />
           <Enemy id="pump-w3" kind="walker" spawn={[1.5, 0, -53.5]} active={activeZone === 'pump'} playerPosition={playerPosition} extraColliders={extraColliders} onDeath={onPumpDeath} />
@@ -870,15 +892,16 @@ export default function GameWorld() {
   const status = useGameStore((state) => state.status)
   const victory = status === 'VICTORY'
   const dead = status === 'PLAYER_DEAD'
+  const showWorld = status !== 'LOADING' && status !== 'MAIN_MENU'
   return (
     <>
-      <color attach="background" args={[victory ? '#18231b' : '#090b0a']} />
+      <color attach="background" args={[victory ? '#1d2b22' : '#0d1211']} />
       <fog
         attach="fog"
-        args={[victory ? '#626c62' : dead ? '#5e625e' : '#4e534f', dead ? 5 : 10, victory ? 74 : dead ? 34 : 52]}
+        args={[victory ? '#67736a' : dead ? '#59605c' : '#343c39', dead ? 5 : 8, victory ? 78 : dead ? 36 : 64]}
       />
       <CombatSystem>
-        <WorldSession key={sessionId} />
+        {showWorld && <WorldSession key={sessionId} />}
       </CombatSystem>
     </>
   )

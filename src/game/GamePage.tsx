@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode, useEffect } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { Canvas, useThree } from '@react-three/fiber'
+import * as THREE from 'three'
 import GameWorld from './GameWorld'
 import { HUD } from './HUD'
 import { Menus } from './Menus'
@@ -9,6 +10,17 @@ import '../styles/game.css'
 
 interface BoundaryState {
   failed: boolean
+}
+
+function RendererTuning({ quality }: { quality: boolean }) {
+  const { gl } = useThree()
+  useEffect(() => {
+    gl.outputColorSpace = THREE.SRGBColorSpace
+    gl.toneMapping = THREE.ACESFilmicToneMapping
+    gl.toneMappingExposure = quality ? 1.22 : 1.14
+    gl.shadowMap.type = THREE.PCFSoftShadowMap
+  }, [gl, quality])
+  return null
 }
 
 class GameBoundary extends Component<{ children: ReactNode }, BoundaryState> {
@@ -76,6 +88,7 @@ export default function GamePage() {
           gl={{ antialias: graphicsMode === 'QUALITY', powerPreference: 'high-performance', alpha: false }}
           camera={{ fov: 54, near: 0.1, far: 155, position: [0, 5, 30] }}
         >
+          <RendererTuning quality={graphicsMode === 'QUALITY'} />
           <GameWorld />
         </Canvas>
         <div className="game-postfx" aria-hidden="true" />

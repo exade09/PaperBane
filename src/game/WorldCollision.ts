@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { GAME_CONFIG } from './GameConfig'
+import type { ProgressionState } from './GameState'
 
 export interface WorldBox {
   minX: number
@@ -23,6 +24,43 @@ export const WORLD_COLLIDERS: WorldBox[] = [
   { minX: 7.2, maxX: 11.7, minZ: -114.2, maxZ: -107.9, maxY: 2.5 },
   { minX: -13.2, maxX: -9.2, minZ: -100.4, maxZ: -94.4, maxY: 2.4 }
 ]
+
+export const INTRO_GATE_COLLIDER: WorldBox = {
+  minX: -GAME_CONFIG.world.streetHalfWidth,
+  maxX: GAME_CONFIG.world.streetHalfWidth,
+  minZ: GAME_CONFIG.world.pumpEntranceZ - 0.35,
+  maxZ: GAME_CONFIG.world.pumpEntranceZ + 0.35,
+  maxY: 5
+}
+
+export const TERMINAL_GATE_COLLIDER: WorldBox = {
+  minX: -6.4,
+  maxX: 6.4,
+  minZ: -67.2,
+  maxZ: -65.7,
+  maxY: 5
+}
+
+export const ARENA_GATE_COLLIDER: WorldBox = {
+  minX: -6.35,
+  maxX: 6.35,
+  minZ: -89.1,
+  maxZ: -87.7,
+  maxY: 5
+}
+
+export const progressionColliders = (progression: ProgressionState): WorldBox[] => {
+  const colliders: WorldBox[] = []
+  if (progression === 'INTRO_COMBAT') colliders.push(INTRO_GATE_COLLIDER)
+  if (
+    progression === 'INTRO_COMBAT' ||
+    progression === 'INTRO_COMPLETE' ||
+    progression === 'PUMP_STATION_ACTIVE' ||
+    progression === 'TERMINAL_READY'
+  ) colliders.push(TERMINAL_GATE_COLLIDER)
+  if (progression === 'BOSS_ACTIVE') colliders.push(ARENA_GATE_COLLIDER)
+  return colliders
+}
 
 export const areaHalfWidth = (z: number) => {
   if (z > GAME_CONFIG.world.pumpEntranceZ) return GAME_CONFIG.world.streetHalfWidth

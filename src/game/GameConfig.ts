@@ -56,6 +56,7 @@ export const GAME_CONFIG = {
 
 export const OBJECTIVES = {
   street: 'REACH THE PUMP STATION',
+  pumpApproach: 'ENTER THE PUMP STATION',
   pumpFight: 'DESTROY THE PAPER HANDS',
   terminal: 'RESTORE THE GREEN SIGNAL',
   exchange: 'ENTER THE OLD EXCHANGE',
@@ -74,4 +75,3 @@ export type GameStatus =
   | 'VICTORY'
 
 export type EnemyKind = 'walker' | 'runner'
-
