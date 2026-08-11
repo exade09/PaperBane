@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useGameStore } from './GameState'
+import type { GameStatus } from './GameConfig'
 
 export type GameAudioCue =
   | 'footstep'
@@ -41,21 +42,59 @@ export const emitGameAudio = (cue: GameAudioCue, intensity = 1) => audioBus.emit
 class PaperBaneAudioEngine {
   private readonly context: AudioContext
   private readonly master: GainNode
-  private readonly ambience: GainNode
-  private readonly ambientSources: AudioScheduledSourceNode[] = []
+  private readonly music: GainNode
+  private readonly sfx: GainNode
+  private readonly baseTrack: GainNode
+  private readonly bossTrack: GainNode
+  private readonly musicSources: AudioScheduledSourceNode[] = []
+  private scheduler: number | null = null
+  private activeTrack: 'base' | 'boss' | 'silent' = 'silent'
+  private nextBaseStep = 0
+  private nextBossStep = 0
+  private baseStep = 0
+  private bossStep = 0
   private volume = 0.65
   private muted = false
 
   constructor(volume: number, muted: boolean) {
     this.context = new AudioContext({ latencyHint: 'interactive' })
     this.master = this.context.createGain()
-    this.ambience = this.context.createGain()
-    this.master.connect(this.context.destination)
-    this.ambience.connect(this.master)
+    this.music = this.context.createGain()
+    this.sfx = this.context.createGain()
+    this.baseTrack = this.context.createGain()
+    this.bossTrack = this.context.createGain()
+
+    const compressor = this.context.createDynamicsCompressor()
+    compressor.threshold.value = -13
+    compressor.knee.value = 14
+    compressor.ratio.value = 4
+    compressor.attack.value = 0.004
+    compressor.release.value = 0.28
+
+    const reverb = this.context.createConvolver()
+    const reverbReturn = this.context.createGain()
+    reverb.buffer = this.createReverbImpulse(1.85, 2.7)
+    reverbReturn.gain.value = 0.16
+
+    this.baseTrack.connect(this.music)
+    this.bossTrack.connect(this.music)
+    this.baseTrack.connect(reverb)
+    this.bossTrack.connect(reverb)
+    reverb.connect(reverbReturn).connect(this.music)
+    this.music.connect(this.master)
+    this.sfx.connect(this.master)
+    this.master.connect(compressor).connect(this.context.destination)
+
+    this.music.gain.value = 0
+    this.baseTrack.gain.value = 0
+    this.bossTrack.gain.value = 0
+    this.sfx.gain.value = 1
     this.volume = volume
     this.muted = muted
     this.updateMaster(true)
-    this.startAmbience()
+    this.startBaseBed()
+    this.startBossBed()
+    this.scheduler = window.setInterval(() => this.scheduleMusic(), 90)
   }
 
   resume() {
@@ -68,10 +107,37 @@ class PaperBaneAudioEngine {
     this.updateMaster(false)
   }
 
-  setStatus(status: string) {
-    const target = status === 'PLAYING' || status === 'BOSS_INTRO' ? 1 : status === 'PAUSED' ? 0.45 : 0.28
-    this.ambience.gain.cancelScheduledValues(this.context.currentTime)
-    this.ambience.gain.linearRampToValueAtTime(0.035 * target, this.context.currentTime + 0.35)
+  setGameState(status: GameStatus, bossActive: boolean, bossAlive: boolean) {
+    const isGameSession = status === 'PLAYING' || status === 'BOSS_INTRO' || status === 'PAUSED'
+    const nextTrack = isGameSession
+      ? bossAlive
+        ? 'boss'
+        : bossActive
+          ? 'silent'
+          : 'base'
+      : 'silent'
+    const musicLevel = status === 'PLAYING' || status === 'BOSS_INTRO'
+      ? 1
+      : status === 'PAUSED'
+        ? 0.28
+        : 0
+    const now = this.context.currentTime
+
+    this.rampGain(this.music, musicLevel, status === 'PAUSED' ? 0.35 : 0.8)
+    if (nextTrack === this.activeTrack) return
+
+    this.activeTrack = nextTrack
+    const fadeTime = 2.4
+    this.rampGain(this.baseTrack, nextTrack === 'base' ? 0.82 : 0, fadeTime)
+    this.rampGain(this.bossTrack, nextTrack === 'boss' ? 0.9 : 0, fadeTime)
+
+    if (nextTrack === 'base') {
+      this.nextBaseStep = now + 0.08
+      this.baseStep = 0
+    } else if (nextTrack === 'boss') {
+      this.nextBossStep = now + 0.08
+      this.bossStep = 0
+    }
   }
 
   play(cue: GameAudioCue, rawIntensity = 1) {
@@ -155,7 +221,8 @@ class PaperBaneAudioEngine {
   }
 
   destroy() {
-    this.ambientSources.forEach((source) => {
+    if (this.scheduler !== null) window.clearInterval(this.scheduler)
+    this.musicSources.forEach((source) => {
       try {
         source.stop()
       } catch {
@@ -173,34 +240,266 @@ class PaperBaneAudioEngine {
     else this.master.gain.linearRampToValueAtTime(target, now + 0.08)
   }
 
-  private startAmbience() {
+  // The score is authored here and synthesised locally. It contains no sampled
+  // or copyrighted soundtrack material.
+  private startBaseBed() {
     const filter = this.context.createBiquadFilter()
     const drift = this.context.createOscillator()
     const driftDepth = this.context.createGain()
-    const low = this.context.createOscillator()
-    const fifth = this.context.createOscillator()
+    const root = this.context.createOscillator()
+    const rootGain = this.context.createGain()
+    const upper = this.context.createOscillator()
+    const upperGain = this.context.createGain()
+    const fog = this.createLoopingNoise(7.5)
+    const fogFilter = this.context.createBiquadFilter()
+    const fogGain = this.context.createGain()
     const now = this.context.currentTime
 
     filter.type = 'lowpass'
-    filter.frequency.setValueAtTime(155, now)
-    filter.Q.value = 1.1
+    filter.frequency.setValueAtTime(205, now)
+    filter.Q.value = 1.35
     drift.type = 'sine'
-    drift.frequency.value = 0.075
-    driftDepth.gain.value = 42
-    low.type = 'sine'
-    low.frequency.value = 43
-    fifth.type = 'triangle'
-    fifth.frequency.value = 64.5
-    this.ambience.gain.setValueAtTime(0.025, now)
+    drift.frequency.value = 0.047
+    driftDepth.gain.value = 58
+    root.type = 'sine'
+    root.frequency.value = 38.89
+    rootGain.gain.value = 0.052
+    upper.type = 'triangle'
+    upper.frequency.value = 58.33
+    upper.detune.value = -9
+    upperGain.gain.value = 0.012
+    fog.loop = true
+    fogFilter.type = 'bandpass'
+    fogFilter.frequency.value = 430
+    fogFilter.Q.value = 0.34
+    fogGain.gain.value = 0.018
 
     drift.connect(driftDepth).connect(filter.frequency)
-    low.connect(filter)
-    fifth.connect(filter)
-    filter.connect(this.ambience)
+    root.connect(rootGain).connect(filter)
+    upper.connect(upperGain).connect(filter)
+    filter.connect(this.baseTrack)
+    fog.connect(fogFilter).connect(fogGain).connect(this.baseTrack)
     drift.start()
-    low.start()
-    fifth.start()
-    this.ambientSources.push(drift, low, fifth)
+    root.start()
+    upper.start()
+    fog.start()
+    this.musicSources.push(drift, root, upper, fog)
+  }
+
+  private startBossBed() {
+    const filter = this.context.createBiquadFilter()
+    const pulse = this.context.createOscillator()
+    const pulseGain = this.context.createGain()
+    const undertone = this.context.createOscillator()
+    const undertoneGain = this.context.createGain()
+    const movement = this.context.createOscillator()
+    const movementDepth = this.context.createGain()
+    const rumble = this.createLoopingNoise(5.25)
+    const rumbleFilter = this.context.createBiquadFilter()
+    const rumbleGain = this.context.createGain()
+
+    filter.type = 'lowpass'
+    filter.frequency.value = 142
+    filter.Q.value = 2.2
+    pulse.type = 'sawtooth'
+    pulse.frequency.value = 36.71
+    pulse.detune.value = -7
+    pulseGain.gain.value = 0.027
+    undertone.type = 'square'
+    undertone.frequency.value = 25.96
+    undertoneGain.gain.value = 0.012
+    movement.type = 'sine'
+    movement.frequency.value = 0.115
+    movementDepth.gain.value = 44
+    rumble.loop = true
+    rumbleFilter.type = 'lowpass'
+    rumbleFilter.frequency.value = 105
+    rumbleFilter.Q.value = 0.8
+    rumbleGain.gain.value = 0.034
+
+    pulse.connect(pulseGain).connect(filter)
+    undertone.connect(undertoneGain).connect(filter)
+    movement.connect(movementDepth).connect(filter.frequency)
+    filter.connect(this.bossTrack)
+    rumble.connect(rumbleFilter).connect(rumbleGain).connect(this.bossTrack)
+    pulse.start()
+    undertone.start()
+    movement.start()
+    rumble.start()
+    this.musicSources.push(pulse, undertone, movement, rumble)
+  }
+
+  private scheduleMusic() {
+    if (this.context.state !== 'running') return
+    const now = this.context.currentTime
+    const horizon = now + 0.42
+
+    if (this.activeTrack === 'base') {
+      if (this.nextBaseStep < now - 0.15) this.nextBaseStep = now + 0.05
+      while (this.nextBaseStep < horizon) {
+        this.scheduleBaseStep(this.nextBaseStep, this.baseStep)
+        this.nextBaseStep += 60 / 46
+        this.baseStep = (this.baseStep + 1) % 16
+      }
+    } else if (this.activeTrack === 'boss') {
+      if (this.nextBossStep < now - 0.15) this.nextBossStep = now + 0.05
+      while (this.nextBossStep < horizon) {
+        this.scheduleBossStep(this.nextBossStep, this.bossStep)
+        this.nextBossStep += 60 / 84
+        this.bossStep = (this.bossStep + 1) % 16
+      }
+    }
+  }
+
+  private scheduleBaseStep(start: number, step: number) {
+    const notes: Array<number | null> = [
+      116.54, null, null, 92.5, null, null, 123.47, null,
+      103.83, null, null, 77.78, null, 87.31, null, null
+    ]
+    const note = notes[step]
+    if (note !== null) {
+      this.musicTone(note, note * 0.997, 3.8, 'sine', 0.029, start, this.baseTrack, 0.65, 0.9)
+      this.musicTone(note * 2.01, note * 2, 2.7, 'triangle', 0.0085, start + 0.12, this.baseTrack, 0.8, 1.2)
+    }
+    if (step === 6 || step === 14) {
+      this.musicNoise(2.4, 0.009, step === 6 ? 1280 : 790, 'bandpass', start, this.baseTrack, 1.2)
+    }
+  }
+
+  private scheduleBossStep(start: number, step: number) {
+    const accented = step % 4 === 0
+    const offBeat = step % 4 === 2
+    this.musicTone(
+      accented ? 61 : 48,
+      accented ? 31 : 34,
+      accented ? 0.46 : 0.25,
+      'sine',
+      accented ? 0.17 : 0.075,
+      start,
+      this.bossTrack,
+      0.008,
+      0.18
+    )
+    if (accented || offBeat) {
+      this.musicNoise(
+        accented ? 0.18 : 0.09,
+        accented ? 0.075 : 0.034,
+        accented ? 520 : 1180,
+        'bandpass',
+        start,
+        this.bossTrack,
+        0.012
+      )
+    }
+    if (step === 0 || step === 8) {
+      const root = step === 0 ? 73.42 : 69.3
+      this.musicTone(root, root * 0.985, 2.2, 'sawtooth', 0.035, start, this.bossTrack, 0.08, 0.8, 310)
+      this.musicTone(root * Math.SQRT2, root * 1.405, 1.8, 'triangle', 0.016, start + 0.05, this.bossTrack, 0.12, 0.75, 480)
+    }
+    if (step === 7 || step === 15) {
+      this.musicNoise(0.72, 0.026, 2240, 'highpass', start, this.bossTrack, 0.08)
+    }
+  }
+
+  private musicTone(
+    from: number,
+    to: number,
+    duration: number,
+    type: OscillatorType,
+    level: number,
+    start: number,
+    destination: AudioNode,
+    attack: number,
+    release: number,
+    cutoff = 1250
+  ) {
+    const oscillator = this.context.createOscillator()
+    const filter = this.context.createBiquadFilter()
+    const gain = this.context.createGain()
+    const attackEnd = Math.min(start + attack, start + duration * 0.45)
+    const releaseStart = Math.max(attackEnd, start + duration - release)
+    oscillator.type = type
+    oscillator.frequency.setValueAtTime(Math.max(1, from), start)
+    oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, to), start + duration)
+    filter.type = 'lowpass'
+    filter.frequency.value = cutoff
+    filter.Q.value = 0.9
+    gain.gain.setValueAtTime(0.0001, start)
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, level), attackEnd)
+    gain.gain.setValueAtTime(Math.max(0.0001, level), releaseStart)
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
+    oscillator.connect(filter).connect(gain).connect(destination)
+    oscillator.start(start)
+    oscillator.stop(start + duration + 0.04)
+  }
+
+  private musicNoise(
+    duration: number,
+    level: number,
+    frequency: number,
+    filterType: BiquadFilterType,
+    start: number,
+    destination: AudioNode,
+    attack: number
+  ) {
+    const source = this.context.createBufferSource()
+    const filter = this.context.createBiquadFilter()
+    const gain = this.context.createGain()
+    source.buffer = this.createNoiseBuffer(duration)
+    filter.type = filterType
+    filter.frequency.value = frequency
+    filter.Q.value = filterType === 'bandpass' ? 1.4 : 0.55
+    gain.gain.setValueAtTime(0.0001, start)
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, level), start + Math.min(attack, duration * 0.45))
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
+    source.connect(filter).connect(gain).connect(destination)
+    source.start(start)
+    source.stop(start + duration + 0.03)
+  }
+
+  private createLoopingNoise(duration: number) {
+    const source = this.context.createBufferSource()
+    source.buffer = this.createNoiseBuffer(duration, true)
+    return source
+  }
+
+  private createNoiseBuffer(duration: number, softened = false) {
+    const frames = Math.max(1, Math.floor(this.context.sampleRate * duration))
+    const buffer = this.context.createBuffer(1, frames, this.context.sampleRate)
+    const data = buffer.getChannelData(0)
+    let previous = 0
+    for (let index = 0; index < frames; index += 1) {
+      const white = Math.random() * 2 - 1
+      previous = softened ? previous * 0.82 + white * 0.18 : white
+      data[index] = previous
+    }
+    return buffer
+  }
+
+  private createReverbImpulse(duration: number, decay: number) {
+    const frames = Math.max(1, Math.floor(this.context.sampleRate * duration))
+    const impulse = this.context.createBuffer(2, frames, this.context.sampleRate)
+    let seed = 0x51a7
+    const random = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0
+      return seed / 0x100000000
+    }
+    for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
+      const data = impulse.getChannelData(channel)
+      for (let index = 0; index < frames; index += 1) {
+        const envelope = Math.pow(1 - index / frames, decay)
+        data[index] = (random() * 2 - 1) * envelope
+      }
+    }
+    return impulse
+  }
+
+  private rampGain(node: GainNode, target: number, duration: number) {
+    const now = this.context.currentTime
+    const current = Math.max(0, node.gain.value)
+    node.gain.cancelScheduledValues(now)
+    node.gain.setValueAtTime(current, now)
+    node.gain.linearRampToValueAtTime(target, now + duration)
   }
 
   private tone(
@@ -223,7 +522,7 @@ class PaperBaneAudioEngine {
     gain.gain.setValueAtTime(0.0001, start)
     gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, level), start + 0.009)
     gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
-    oscillator.connect(filter).connect(gain).connect(this.master)
+    oscillator.connect(filter).connect(gain).connect(this.sfx)
     oscillator.start(start)
     oscillator.stop(start + duration + 0.025)
   }
@@ -236,12 +535,11 @@ class PaperBaneAudioEngine {
     delay = 0
   ) {
     const start = this.context.currentTime + delay
-    const frames = Math.max(1, Math.floor(this.context.sampleRate * duration))
-    const buffer = this.context.createBuffer(1, frames, this.context.sampleRate)
+    const buffer = this.createNoiseBuffer(duration)
     const data = buffer.getChannelData(0)
-    for (let index = 0; index < frames; index += 1) {
-      const envelope = 1 - index / frames
-      data[index] = (Math.random() * 2 - 1) * envelope
+    for (let index = 0; index < buffer.length; index += 1) {
+      const envelope = 1 - index / buffer.length
+      data[index] *= envelope
     }
     const source = this.context.createBufferSource()
     const filter = this.context.createBiquadFilter()
@@ -252,7 +550,7 @@ class PaperBaneAudioEngine {
     filter.Q.value = filterType === 'bandpass' ? 0.8 : 0.45
     gain.gain.setValueAtTime(level, start)
     gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
-    source.connect(filter).connect(gain).connect(this.master)
+    source.connect(filter).connect(gain).connect(this.sfx)
     source.start(start)
   }
 }
@@ -261,6 +559,8 @@ export function AudioSystem() {
   const volume = useGameStore((state) => state.volume)
   const muted = useGameStore((state) => state.muted)
   const status = useGameStore((state) => state.status)
+  const bossActive = useGameStore((state) => state.bossActive)
+  const bossAlive = useGameStore((state) => state.bossActive && state.bossHp > 0)
   const message = useGameStore((state) => state.message)
   const hp = useGameStore((state) => state.hp)
   const combo = useGameStore((state) => state.combo)
@@ -269,16 +569,16 @@ export function AudioSystem() {
   const previousMessage = useRef(message)
   const previousHp = useRef(hp)
   const previousCombo = useRef(combo)
-  const settingsRef = useRef({ volume, muted, status })
+  const settingsRef = useRef({ volume, muted, status, bossActive, bossAlive })
 
-  settingsRef.current = { volume, muted, status }
+  settingsRef.current = { volume, muted, status, bossActive, bossAlive }
 
   useEffect(() => {
     const unlock = () => {
       if (!engineRef.current) {
         const settings = settingsRef.current
         engineRef.current = new PaperBaneAudioEngine(settings.volume, settings.muted)
-        engineRef.current.setStatus(settings.status)
+        engineRef.current.setGameState(settings.status, settings.bossActive, settings.bossAlive)
       }
       engineRef.current.resume()
     }
@@ -301,14 +601,14 @@ export function AudioSystem() {
 
   useEffect(() => {
     const engine = engineRef.current
-    engine?.setStatus(status)
+    engine?.setGameState(status, bossActive, bossAlive)
     if (status !== previousStatus.current) {
       if (status === 'PLAYER_DEAD') engine?.play('death')
       if (status === 'VICTORY') engine?.play('victory')
       if (status === 'BOSS_INTRO') engine?.play('boss-warning')
       previousStatus.current = status
     }
-  }, [status])
+  }, [bossActive, bossAlive, status])
 
   useEffect(() => {
     if (message && message !== previousMessage.current) {

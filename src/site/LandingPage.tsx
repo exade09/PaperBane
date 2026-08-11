@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ArrowIcon, MenuIcon, PaperBaneLogo } from './BrandIcons'
-import CinematicHeroScene from './CinematicHeroScene'
 import SiteModal from './SiteModal'
 import { SocialLinks } from './SocialLinks'
 import '../styles/site.css'
@@ -16,6 +15,12 @@ const controls = [
   ['F', 'Wick Surge'],
   ['Q', 'Medkit'],
   ['ESC', 'Pause'],
+]
+
+const runRewards = [
+  { place: 'FIRST PLACE', rank: '01', amount: '3' },
+  { place: 'SECOND PLACE', rank: '02', amount: '1' },
+  { place: 'THIRD PLACE', rank: '03', amount: '0.5' },
 ]
 
 const tokenFacts = [
@@ -164,7 +169,17 @@ function CommunityModal({ open, onClose }: { open: boolean; onClose: () => void 
 function Hero() {
   return (
     <section className="pb-hero" aria-labelledby="paperbane-title">
-      <CinematicHeroScene />
+      <img
+        className="pb-hero__art"
+        src="/assets/paperbane-hero-v2.png"
+        alt=""
+        aria-hidden="true"
+        width="1672"
+        height="939"
+        loading="eager"
+        decoding="async"
+        fetchPriority="high"
+      />
       <div className="pb-hero__grain" aria-hidden="true" />
       <div className="pb-hero__vignette" aria-hidden="true" />
       <div className="pb-hero__content pb-shell">
@@ -248,6 +263,26 @@ function GamePreview() {
             </article>
           ))}
         </div>
+
+        <section className="pb-reward-board" aria-labelledby="run-rewards-title">
+          <div className="pb-reward-board__intro">
+            <p className="pb-kicker">FASTEST RUN BOUNTY</p>
+            <h3 id="run-rewards-title">BEAT THE FOG<br />CLAIM THE PODIUM</h3>
+            <p>The three fastest demo completion times receive the SOL rewards below</p>
+            <a className="pb-button pb-button--primary" href="/play">
+              RUN FOR THE RECORD
+              <ArrowIcon />
+            </a>
+          </div>
+          <ol className="pb-reward-board__prizes" aria-label="Rewards for the three fastest completion times">
+            {runRewards.map(({ place, rank, amount }) => (
+              <li key={rank} data-rank={rank}>
+                <span><b>{rank}</b>{place}</span>
+                <strong>{amount}<small>SOL</small></strong>
+              </li>
+            ))}
+          </ol>
+        </section>
 
         <div className="pb-controls-block">
           <div className="pb-controls-block__intro">

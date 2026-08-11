@@ -216,7 +216,7 @@ const modelMetrics = await evaluate(`(() => {
   }
 })()`)
 
-assert(modelMetrics?.player?.meshInstances >= 160, `Detailed player model was not loaded: ${JSON.stringify(modelMetrics)}`)
+assert(modelMetrics?.player?.meshInstances >= 130, `Player model was not loaded: ${JSON.stringify(modelMetrics)}`)
 assert(modelMetrics?.player?.renderedTriangles >= 19000, `Player geometry regressed: ${JSON.stringify(modelMetrics?.player)}`)
 assert(modelMetrics?.weapon?.meshInstances >= 20, `Detailed candlestick was not loaded: ${JSON.stringify(modelMetrics?.weapon)}`)
 assert(modelMetrics?.weapon?.renderedTriangles >= 1400, `Candlestick geometry regressed: ${JSON.stringify(modelMetrics?.weapon)}`)

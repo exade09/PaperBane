@@ -343,18 +343,18 @@ const makeTaperedPrismGeometry = (
 
 const TORSO_GEOMETRY = new THREE.CylinderGeometry(0.53, 0.45, 1, 9, 3)
 const LIMB_GEOMETRY = new THREE.CapsuleGeometry(0.34, 0.32, 4, 8)
-const HEAD_GEOMETRY = new THREE.IcosahedronGeometry(0.5, 2)
-const JAW_GEOMETRY = new THREE.DodecahedronGeometry(0.5, 1)
-const FACE_PLANE_GEOMETRY = new THREE.DodecahedronGeometry(0.5, 0)
+const HEAD_GEOMETRY = new THREE.SphereGeometry(0.5, 16, 12)
+const JAW_GEOMETRY = new THREE.SphereGeometry(0.5, 14, 10)
 const JOINT_GEOMETRY = new THREE.DodecahedronGeometry(0.5, 1)
 const HAND_GEOMETRY = new THREE.IcosahedronGeometry(0.5, 2)
 const FINGER_GEOMETRY = new THREE.CapsuleGeometry(0.035, 0.1, 3, 7)
 const HAIR_GEOMETRY = new THREE.DodecahedronGeometry(0.5, 0)
 const HAIR_LOCK_GEOMETRY = makeTaperedPrismGeometry(0.55, 0.16, 1, 0.4, 0.15)
-const NOSE_GEOMETRY = new THREE.ConeGeometry(0.065, 0.19, 7)
+const NOSE_TIP_GEOMETRY = new THREE.SphereGeometry(0.5, 10, 8)
 const NOSE_BRIDGE_GEOMETRY = makeTaperedPrismGeometry(0.075, 0.12, 0.28, 0.07, 0.13)
 const EAR_GEOMETRY = new THREE.SphereGeometry(0.5, 8, 6)
 const EYE_GEOMETRY = new THREE.SphereGeometry(0.5, 9, 6)
+const IRIS_GEOMETRY = new THREE.CircleGeometry(0.5, 12)
 const BROW_GEOMETRY = new RoundedBoxGeometry(0.18, 0.042, 0.042, 2, 0.016)
 const EYELID_GEOMETRY = new RoundedBoxGeometry(0.17, 0.024, 0.025, 2, 0.01)
 const MOUTH_GEOMETRY = new RoundedBoxGeometry(0.19, 0.025, 0.025, 2, 0.01)
@@ -384,37 +384,23 @@ const TROUSER_FOLD_GEOMETRY = new THREE.CapsuleGeometry(0.025, 0.22, 2, 5)
 const PATCH_GEOMETRY = new THREE.CircleGeometry(0.5, 6)
 
 const HAIR_CLUMPS = [
-  { p: [-0.19, 0.28, -0.02], s: [0.34, 0.23, 0.34], r: [0.18, 0.1, -0.28] },
-  { p: [0.01, 0.3, -0.015], s: [0.37, 0.25, 0.36], r: [0.08, 0.35, 0.05] },
-  { p: [0.21, 0.27, -0.01], s: [0.33, 0.24, 0.34], r: [0.16, -0.26, 0.28] },
-  { p: [-0.29, 0.18, -0.03], s: [0.27, 0.29, 0.3], r: [0.02, 0.16, -0.38] },
-  { p: [0.29, 0.17, -0.025], s: [0.28, 0.28, 0.3], r: [0.04, -0.18, 0.36] },
-  { p: [-0.205, 0.155, 0.245], s: [0.25, 0.31, 0.22], r: [-0.08, 0.18, -0.2] },
-  { p: [-0.075, 0.15, 0.275], s: [0.24, 0.34, 0.21], r: [-0.12, -0.12, -0.06] },
-  { p: [0.075, 0.165, 0.272], s: [0.23, 0.31, 0.21], r: [-0.1, 0.14, 0.1] },
-  { p: [0.21, 0.15, 0.235], s: [0.23, 0.3, 0.22], r: [-0.05, -0.18, 0.22] },
-  { p: [-0.29, 0.075, 0.17], s: [0.2, 0.36, 0.2], r: [-0.05, 0.04, -0.24] },
-  { p: [0.29, 0.07, 0.17], s: [0.2, 0.34, 0.2], r: [-0.04, -0.04, 0.24] },
-  { p: [-0.2, 0.24, -0.22], s: [0.32, 0.3, 0.32], r: [0.12, -0.14, -0.24] },
-  { p: [0.015, 0.28, -0.255], s: [0.36, 0.32, 0.34], r: [0.1, 0.22, 0.03] },
-  { p: [0.22, 0.22, -0.22], s: [0.32, 0.3, 0.32], r: [0.14, -0.2, 0.25] },
-  { p: [-0.3, 0.07, -0.15], s: [0.23, 0.32, 0.24], r: [0.04, 0.18, -0.34] },
-  { p: [0.3, 0.06, -0.145], s: [0.23, 0.31, 0.24], r: [0.05, -0.17, 0.34] }
+  { p: [-0.15, 0.245, -0.02], s: [0.25, 0.17, 0.27], r: [0.12, 0.08, -0.2] },
+  { p: [0, 0.275, -0.025], s: [0.28, 0.18, 0.28], r: [0.06, 0.2, 0] },
+  { p: [0.15, 0.245, -0.02], s: [0.25, 0.17, 0.27], r: [0.12, -0.08, 0.2] },
+  { p: [-0.235, 0.13, -0.02], s: [0.18, 0.23, 0.22], r: [0.02, 0.1, -0.24] },
+  { p: [0.235, 0.13, -0.02], s: [0.18, 0.23, 0.22], r: [0.02, -0.1, 0.24] },
+  { p: [-0.14, 0.19, 0.19], s: [0.16, 0.2, 0.12], r: [-0.08, 0.12, -0.14] },
+  { p: [-0.035, 0.205, 0.215], s: [0.15, 0.19, 0.11], r: [-0.1, -0.08, -0.04] },
+  { p: [0.075, 0.205, 0.21], s: [0.15, 0.18, 0.11], r: [-0.08, 0.08, 0.06] },
+  { p: [0.17, 0.175, 0.17], s: [0.15, 0.18, 0.12], r: [-0.04, -0.12, 0.14] },
+  { p: [-0.16, 0.18, -0.18], s: [0.22, 0.2, 0.22], r: [0.1, -0.1, -0.15] },
+  { p: [0, 0.21, -0.22], s: [0.25, 0.21, 0.24], r: [0.08, 0.14, 0] },
+  { p: [0.16, 0.18, -0.18], s: [0.22, 0.2, 0.22], r: [0.1, -0.12, 0.15] }
 ] as const
 
 const NAPE_LOCKS = [
-  { p: [-0.23, -0.08, -0.22], s: [0.2, 0.28, 0.18], r: [-0.06, 0.12, -0.24] },
-  { p: [-0.08, -0.12, -0.275], s: [0.21, 0.32, 0.19], r: [-0.04, -0.16, -0.08] },
-  { p: [0.09, -0.12, -0.275], s: [0.21, 0.31, 0.19], r: [-0.05, 0.16, 0.09] },
-  { p: [0.24, -0.075, -0.21], s: [0.2, 0.27, 0.18], r: [-0.07, -0.12, 0.25] }
-] as const
-
-const STUBBLE_PATCHES = [
-  { p: [-0.14, -0.16, 0.307], s: [0.12, 0.1, 1], r: 0.18 },
-  { p: [0.14, -0.16, 0.307], s: [0.12, 0.1, 1], r: -0.18 },
-  { p: [-0.105, -0.265, 0.285], s: [0.115, 0.085, 1], r: 0.08 },
-  { p: [0.105, -0.265, 0.285], s: [0.115, 0.085, 1], r: -0.08 },
-  { p: [0, -0.31, 0.285], s: [0.15, 0.08, 1], r: 0 }
+  { p: [-0.11, -0.065, -0.22], s: [0.13, 0.2, 0.13], r: [-0.04, 0.1, -0.1] },
+  { p: [0.11, -0.065, -0.22], s: [0.13, 0.2, 0.13], r: [-0.04, -0.1, 0.1] }
 ] as const
 
 const createDirtyShirtTexture = () => {
@@ -534,18 +520,15 @@ export function PlayerModel({ animation, surge, damageFlash }: PlayerModelProps)
       map: shirtTexture, color: '#b0b0a8', emissive: '#252622', emissiveIntensity: 0.16, roughness: 1, flatShading: true
     }),
     skin: new THREE.MeshStandardMaterial({
-      color: '#8c6d55', emissive: '#2b1d16', emissiveIntensity: 0.13, roughness: 1, flatShading: true
+      color: '#aa8068', emissive: '#2b1d16', emissiveIntensity: 0.08, roughness: 0.9
     }),
-    skinDark: new THREE.MeshStandardMaterial({ color: '#5d4638', emissive: '#1c120e', emissiveIntensity: 0.08, roughness: 1, flatShading: true }),
-    skinPlane: new THREE.MeshStandardMaterial({ color: '#765946', roughness: 1, flatShading: true }),
-    skinHighlight: new THREE.MeshStandardMaterial({ color: '#9b765a', roughness: 0.98, flatShading: true }),
-    stubble: new THREE.MeshStandardMaterial({ color: '#3b332f', roughness: 1, transparent: true, opacity: 0.36, depthWrite: false, flatShading: true }),
-    lip: new THREE.MeshStandardMaterial({ color: '#4e302d', roughness: 0.96, flatShading: true }),
-    damage: new THREE.MeshStandardMaterial({ color: '#713b32', roughness: 1, flatShading: true }),
+    skinPlane: new THREE.MeshStandardMaterial({ color: '#966e59', roughness: 0.94 }),
+    skinHighlight: new THREE.MeshStandardMaterial({ color: '#b98d73', roughness: 0.88 }),
+    lip: new THREE.MeshStandardMaterial({ color: '#704b47', roughness: 0.92 }),
     hair: new THREE.MeshStandardMaterial({ color: '#111216', emissive: '#090a0d', emissiveIntensity: 0.1, roughness: 0.96, flatShading: true }),
-    hairEdge: new THREE.MeshStandardMaterial({ color: '#343035', emissive: '#1a161c', emissiveIntensity: 0.24, roughness: 0.98, flatShading: true }),
-    eyeSocket: new THREE.MeshStandardMaterial({ color: '#241c1a', roughness: 1, flatShading: true }),
-    eye: new THREE.MeshStandardMaterial({ color: '#73736d', emissive: '#151512', emissiveIntensity: 0.025, roughness: 0.82, flatShading: true }),
+    hairEdge: new THREE.MeshStandardMaterial({ color: '#26252a', emissive: '#121116', emissiveIntensity: 0.14, roughness: 0.96, flatShading: true }),
+    eye: new THREE.MeshStandardMaterial({ color: '#c0bdb2', emissive: '#161612', emissiveIntensity: 0.02, roughness: 0.78 }),
+    iris: new THREE.MeshStandardMaterial({ color: '#59615b', roughness: 0.72 }),
     pupil: new THREE.MeshBasicMaterial({ color: '#10100f' }),
     trousers: new THREE.MeshStandardMaterial({ color: '#424349', emissive: '#1c1d21', emissiveIntensity: 0.24, roughness: 1, flatShading: true }),
     trousersWear: new THREE.MeshStandardMaterial({ color: '#403b37', roughness: 1, flatShading: true }),
@@ -920,7 +903,7 @@ export function PlayerModel({ animation, surge, damageFlash }: PlayerModelProps)
     materials.jacket.emissive.set(damageFlash ? '#c33a3a' : '#18191e')
     materials.jacket.emissiveIntensity = damageFlash ? 1.65 : 0.38
     materials.skin.emissive.set(damageFlash ? '#c33a3a' : '#2b1d16')
-    materials.skin.emissiveIntensity = damageFlash ? 1.05 : 0.13
+    materials.skin.emissiveIntensity = damageFlash ? 1.05 : 0.08
     materials.trim.emissiveIntensity = surge || animation === 'WICK_SURGE'
       ? 1.3 + Math.sin(worldTime * 8) * 0.25
       : 0.38
@@ -1070,94 +1053,82 @@ export function PlayerModel({ animation, surge, damageFlash }: PlayerModelProps)
       </group>
 
       <group position={[0, 2.18, -0.015]}>
-        <mesh geometry={NECK_GEOMETRY} material={materials.skinPlane} castShadow />
+        <mesh geometry={NECK_GEOMETRY} material={materials.skin} castShadow />
+      </group>
+      <group ref={head} position={[0, 2.43, 0.015]}>
+        <mesh geometry={HEAD_GEOMETRY} scale={[0.44, 0.54, 0.45]} material={materials.skin} castShadow />
+        <mesh
+          geometry={JAW_GEOMETRY}
+          position={[0, -0.145, 0.012]}
+          scale={[0.36, 0.28, 0.38]}
+          material={materials.skin}
+          castShadow
+        />
+        <mesh geometry={HEAD_GEOMETRY} position={[0, 0.115, -0.055]} scale={[0.445, 0.3, 0.455]} material={materials.hair} castShadow />
         {[-1, 1].map((side) => (
           <mesh
-            key={`neck-${side}`}
-            geometry={LINE_GEOMETRY}
-            position={[side * 0.09, -0.01, 0.16]}
-            rotation={[0.04, 0, side * 0.18]}
-            scale={[0.48, 0.52, 0.48]}
-            material={materials.skinDark}
+            key={`ear-${side}`}
+            geometry={EAR_GEOMETRY}
+            position={[side * 0.222, -0.015, -0.002]}
+            scale={[0.07, 0.13, 0.055]}
+            material={materials.skinPlane}
           />
         ))}
-      </group>
-      <group ref={head} position={[0, 2.49, 0.015]}>
-        <mesh geometry={HEAD_GEOMETRY} scale={[0.535, 0.76, 0.54]} material={materials.skin} castShadow />
-        <mesh geometry={FACE_PLANE_GEOMETRY} position={[0, 0.115, 0.265]} scale={[0.46, 0.37, 0.12]} material={materials.skinHighlight} />
-        {[-1, 1].map((side) => (
-          <group key={`face-plane-${side}`}>
-            <mesh
-              geometry={FACE_PLANE_GEOMETRY}
-              position={[side * 0.23, 0.055, 0.16]}
-              rotation={[0, side * -0.38, 0]}
-              scale={[0.12, 0.3, 0.18]}
-              material={materials.skinPlane}
-            />
-            <mesh
-              geometry={FACE_PLANE_GEOMETRY}
-              position={[side * 0.155, -0.055, 0.282]}
-              rotation={[0.05, side * -0.16, side * -0.05]}
-              scale={[0.21, 0.17, 0.12]}
-              material={materials.skinHighlight}
-            />
-            <mesh
-              geometry={FACE_PLANE_GEOMETRY}
-              position={[side * 0.17, -0.205, 0.235]}
-              rotation={[0.03, side * -0.25, side * 0.08]}
-              scale={[0.17, 0.27, 0.12]}
-              material={materials.skinPlane}
-            />
-          </group>
-        ))}
-        <mesh geometry={JAW_GEOMETRY} position={[0, -0.205, 0.035]} scale={[0.46, 0.44, 0.45]} material={materials.skin} castShadow />
-        <mesh geometry={FACE_PLANE_GEOMETRY} position={[0, -0.315, 0.255]} scale={[0.25, 0.17, 0.13]} material={materials.skinPlane} />
-        <mesh geometry={HEAD_GEOMETRY} position={[0, 0.15, -0.085]} scale={[0.54, 0.43, 0.54]} material={materials.hair} castShadow />
-        {[-1, 1].map((side) => (
-          <group key={`ear-${side}`}>
-            <mesh geometry={EAR_GEOMETRY} position={[side * 0.286, -0.015, -0.005]} scale={[0.1, 0.2, 0.09]} material={materials.skinPlane} />
-            <mesh geometry={EAR_GEOMETRY} position={[side * 0.291, -0.018, 0.026]} scale={[0.045, 0.105, 0.046]} material={materials.damage} />
-          </group>
-        ))}
-        <mesh geometry={NOSE_BRIDGE_GEOMETRY} position={[0, 0.055, 0.305]} material={materials.skinPlane} castShadow />
-        <mesh geometry={NOSE_GEOMETRY} position={[0, -0.045, 0.365]} rotation={[Math.PI / 2, 0, 0]} scale={[1.08, 1.08, 0.82]} material={materials.skinDark} castShadow />
-        <mesh geometry={FACE_PLANE_GEOMETRY} position={[0, -0.072, 0.353]} scale={[0.18, 0.095, 0.12]} material={materials.skinHighlight} />
+        <mesh
+          geometry={NOSE_BRIDGE_GEOMETRY}
+          position={[0, 0.032, 0.215]}
+          scale={[0.72, 0.64, 0.58]}
+          material={materials.skinPlane}
+          castShadow
+        />
+        <mesh
+          geometry={NOSE_TIP_GEOMETRY}
+          position={[0, -0.052, 0.252]}
+          scale={[0.078, 0.062, 0.07]}
+          material={materials.skinHighlight}
+          castShadow
+        />
         {[-1, 1].map((side) => (
           <group key={`eye-${side}`}>
-            <mesh geometry={EYE_GEOMETRY} position={[side * 0.115, 0.047, 0.3]} scale={[0.18, 0.058, 0.05]} material={materials.eyeSocket} />
-            <mesh geometry={EYE_GEOMETRY} position={[side * 0.115, 0.042, 0.327]} scale={[0.122, 0.025, 0.036]} material={materials.eye} />
-            <mesh geometry={EYE_GEOMETRY} position={[side * 0.115, 0.039, 0.348]} scale={[0.026, 0.023, 0.018]} material={materials.pupil} />
+            <mesh
+              geometry={EYE_GEOMETRY}
+              position={[side * 0.09, 0.038, 0.222]}
+              scale={[0.096, 0.041, 0.027]}
+              material={materials.eye}
+            />
+            <mesh
+              geometry={IRIS_GEOMETRY}
+              position={[side * 0.09, 0.038, 0.237]}
+              scale={[0.03, 0.027, 1]}
+              material={materials.iris}
+            />
+            <mesh
+              geometry={IRIS_GEOMETRY}
+              position={[side * 0.09, 0.038, 0.238]}
+              scale={[0.013, 0.013, 1]}
+              material={materials.pupil}
+            />
             <mesh
               geometry={BROW_GEOMETRY}
-              position={[side * 0.115, 0.112, 0.326]}
-              rotation={[0, side * -0.05, side * 0.14]}
+              position={[side * 0.09, 0.096, 0.228]}
+              rotation={[0, side * -0.04, side * 0.075]}
+              scale={[0.86, 0.82, 0.82]}
               material={materials.hair}
             />
-            <mesh geometry={EYELID_GEOMETRY} position={[side * 0.115, 0.057, 0.349]} rotation={[0, 0, side * 0.045]} scale={[0.84, 0.75, 1]} material={materials.skinDark} />
-            <mesh geometry={EYELID_GEOMETRY} position={[side * 0.115, 0.008, 0.329]} rotation={[0, 0, side * -0.055]} scale={[0.78, 0.62, 1]} material={materials.damage} />
+            <mesh
+              geometry={EYELID_GEOMETRY}
+              position={[side * 0.09, 0.061, 0.24]}
+              rotation={[0, 0, side * 0.035]}
+              scale={[0.84, 0.62, 0.85]}
+              material={materials.skinPlane}
+            />
           </group>
         ))}
-        <mesh geometry={MOUTH_GEOMETRY} position={[0, -0.215, 0.323]} material={materials.lip} />
-        <mesh geometry={MOUTH_GEOMETRY} position={[0.012, -0.238, 0.316]} scale={[0.72, 0.62, 0.9]} material={materials.skinDark} />
-        <mesh geometry={PATCH_GEOMETRY} position={[0, -0.162, 0.326]} scale={[0.19, 0.045, 1]} material={materials.stubble} />
-        {STUBBLE_PATCHES.map((patch, index) => (
-          <mesh
-            key={`stubble-${index}`}
-            geometry={PATCH_GEOMETRY}
-            position={patch.p}
-            rotation={[0, 0, patch.r]}
-            scale={patch.s}
-            material={materials.stubble}
-          />
-        ))}
-        <mesh geometry={PATCH_GEOMETRY} position={[-0.18, -0.07, 0.326]} rotation={[-0.05, 0, 0.2]} scale={[0.115, 0.075, 1]} material={materials.damage} />
-        <mesh geometry={PATCH_GEOMETRY} position={[0.18, -0.135, 0.31]} rotation={[-0.05, 0, -0.18]} scale={[0.075, 0.04, 1]} material={materials.damage} />
-        <mesh geometry={LINE_GEOMETRY} position={[-0.165, 0.025, 0.346]} rotation={[0, 0, 0.26]} scale={[0.31, 0.21, 0.31]} material={materials.damage} />
-        <mesh geometry={LINE_GEOMETRY} position={[0.18, -0.08, 0.333]} rotation={[0, 0, -0.18]} scale={[0.24, 0.18, 0.24]} material={materials.skinDark} />
+        <mesh geometry={MOUTH_GEOMETRY} position={[0, -0.158, 0.21]} scale={[0.8, 0.72, 0.78]} material={materials.lip} />
         {HAIR_CLUMPS.map((clump, index) => (
           <mesh
             key={index}
-            geometry={index >= 5 && index <= 10 ? HAIR_LOCK_GEOMETRY : HAIR_GEOMETRY}
+            geometry={index >= 5 && index <= 8 ? HAIR_LOCK_GEOMETRY : HAIR_GEOMETRY}
             position={clump.p}
             rotation={[clump.r[0], clump.r[1], clump.r[2]]}
             scale={clump.s}
